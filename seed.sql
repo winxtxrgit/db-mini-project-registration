@@ -18,7 +18,10 @@ INSERT INTO curriculum VALUES
 INSERT INTO term (term_id, academic_year, semester, is_current) VALUES
  ('2567-1', 2567, 1, 0), ('2567-2', 2567, 2, 0),
  ('2568-1', 2568, 1, 0), ('2568-2', 2568, 2, 0),
- ('2569-1', 2569, 1, 0), ('2569-2', 2569, 2, 1);
+ ('2569-1', 2569, 1, 0);
+-- ภาคปัจจุบัน: ช่วงลงทะเบียนสมมุติ (reg ไม่ได้ประกาศไว้ในข้อมูลที่ดึงมา) และเพดาน 22 หน่วยกิต
+INSERT INTO term (term_id, academic_year, semester, is_current, reg_open_at, reg_close_at, max_credits) VALUES
+ ('2569-2', 2569, 2, 1, '2026-10-20 08:00', '2027-01-15 23:59', 22);
 
 INSERT INTO course VALUES
  ('300-1101','คณิตศาสตร์วิศวกรรม 1','Engineering Mathematics 1',3,'3(3-0-6)'),
@@ -205,3 +208,21 @@ DROP TABLE num;
 
 -- เก็บประวัติไว้เฉพาะของนักศึกษาสมมุติหลัก
 DELETE FROM registration_log WHERE student_id NOT LIKE '6799%';
+
+-- ข้อมูลตั้งต้นของตารางไม่ใช่การแก้ตาราง จึงไม่เก็บใน schedule_log
+DELETE FROM schedule_log;
+
+------------------------------------------------------------------
+-- บัญชีผู้ใช้สำหรับทดสอบ (ข้อมูลสมมุติ ใช้ในเครื่องเท่านั้น)
+-- ทุกบัญชีใช้รหัสผ่านทดสอบเดียวกัน: demo1234 (เก็บเป็น hash แบบ pbkdf2)
+--   admin        ฝ่ายทะเบียน
+--   scheduler    อาจารย์ผู้จัดตาราง (ผูกกับอาจารย์ id 2)
+--   6799000001…5 และ B6501…, B6901… นักศึกษา (username = รหัสนักศึกษา)
+------------------------------------------------------------------
+INSERT INTO app_user (username, password_hash, role, student_id, instructor_id) VALUES
+ ('admin',     'pbkdf2:sha256:600000$o3hUhHVS1HJqZDue$719e5cfcd8eaacfe520dac5e99025a461071f40123394dd01ac36ea0a646532e', 'admin',     NULL, NULL),
+ ('scheduler', 'pbkdf2:sha256:600000$o3hUhHVS1HJqZDue$719e5cfcd8eaacfe520dac5e99025a461071f40123394dd01ac36ea0a646532e', 'scheduler', NULL, 2);
+INSERT INTO app_user (username, password_hash, role, student_id)
+SELECT student_id, 'pbkdf2:sha256:600000$o3hUhHVS1HJqZDue$719e5cfcd8eaacfe520dac5e99025a461071f40123394dd01ac36ea0a646532e', 'student', student_id
+FROM student WHERE curriculum_id <> 'EXT'
+ORDER BY student_id;

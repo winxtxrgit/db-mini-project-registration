@@ -6,6 +6,7 @@
 <title>{% block title %}ระบบลงทะเบียนตามแผนการเรียน{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+{# หน้าตายังเป็นแบบชั่วคราว: รอบนี้เน้นตัวระบบ UX/UI จะออกแบบใหม่ทีหลัง #}
 <style>
   :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#e4e7ec;
           --brand:#1f5fbf; --ok:#127a3e; --okbg:#e7f6ec; --bad:#b42318; --badbg:#fdecea;
@@ -13,19 +14,19 @@
   * { box-sizing: border-box; }
   body { margin:0; font-family:'Sarabun',system-ui,sans-serif; background:var(--bg); color:var(--ink); font-size:15px; }
   header { background:var(--brand); color:#fff; }
-  header .wrap { display:flex; flex-wrap:wrap; gap:16px; align-items:center; padding:12px 16px; }
-  header a { color:#fff; text-decoration:none; opacity:.9; }
-  header a:hover { opacity:1; text-decoration:underline; }
-  header .brand { font-weight:600; font-size:17px; margin-right:auto; }
-  header form { margin:0; }
-  header button { background:transparent; border:1px solid #fff8; color:#fff; padding:4px 10px; border-radius:6px; cursor:pointer; font:inherit; }
-  .wrap { max-width:1200px; margin:0 auto; padding:16px; }
-  h1 { font-size:22px; margin:8px 0 4px; } h2 { font-size:18px; margin:0 0 4px; }
+  header .wrap { display:flex; flex-wrap:wrap; gap:14px; align-items:center; padding:10px 16px; }
+  header a { color:#fff; text-decoration:none; opacity:.9; } header a:hover { opacity:1; text-decoration:underline; }
+  header .brand { font-weight:600; font-size:16px; margin-right:auto; }
+  header form { margin:0; display:inline; }
+  header .who { font-size:13px; opacity:.85; }
+  header button { background:transparent; border:1px solid #fff8; color:#fff; padding:3px 10px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px; }
+  .wrap { max-width:1240px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:8px 0 4px; } h2 { font-size:17px; margin:0 0 4px; } h3 { font-size:15px; margin:12px 0 6px; }
   .sub { color:var(--muted); margin:0 0 12px; font-size:14px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
   .table-scroll { overflow-x:auto; }
   table { width:100%; border-collapse:collapse; font-size:14px; }
-  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
   th { background:#f9fafb; font-weight:600; white-space:nowrap; }
   td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   .tag { display:inline-block; padding:1px 8px; border-radius:999px; font-size:13px; white-space:nowrap; }
@@ -38,22 +39,42 @@
   .btn { font:inherit; font-size:13px; padding:4px 10px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; white-space:nowrap; }
   .btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
   .btn.danger { color:var(--bad); border-color:#f3b8b2; }
-  td form { display:inline; margin:0; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; }
+  form.inline { display:inline-flex; flex-wrap:wrap; gap:4px; align-items:center; margin:2px 0; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; margin-bottom:16px; }
   .grid .card { margin-bottom:0; }
   .empty { color:var(--muted); font-size:14px; }
-  input, select { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; }
+  input, select { font:inherit; font-size:14px; padding:4px 6px; border:1px solid var(--line); border-radius:6px; }
+  input.short { width:70px; } input.time { width:72px; }
   a { color:var(--brand); }
   tr.mine td { background:#f3f8ff; }
+  .subnav { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .subnav a { padding:4px 12px; border-radius:999px; background:#fff; border:1px solid var(--line); text-decoration:none; font-size:14px; }
 </style>
 </head>
 <body>
 <header><div class="wrap">
-  <span class="brand">ระบบลงทะเบียนตามแผนการเรียน · CDTI 2/2569</span>
-  <a href="{{ url_for('index') }}">นักศึกษา</a>
-  <a href="{{ url_for('registrar') }}">ฝ่ายทะเบียน</a>
-  <a href="{{ url_for('log') }}">ประวัติการทำรายการ</a>
-  <form method="post" action="{{ url_for('reset') }}"><button title="ลบข้อมูลที่ทดลองทำ แล้วโหลด seed.sql ใหม่">รีเซ็ตข้อมูล</button></form>
+  <span class="brand">ระบบลงทะเบียนตามแผนการเรียน · CDTI</span>
+  {% if g.user %}
+    {% if g.user.role == 'student' %}
+      <a href="{{ url_for('student.home') }}">ลงทะเบียน</a>
+      <a href="{{ url_for('student.log') }}">ประวัติของฉัน</a>
+    {% elif g.user.role == 'admin' %}
+      <a href="{{ url_for('admin.dashboard') }}">ภาพรวม</a>
+      <a href="{{ url_for('admin.students') }}">นักศึกษา</a>
+      <a href="{{ url_for('admin.sections') }}">กลุ่มเรียนและคิว</a>
+      <a href="{{ url_for('admin.terms') }}">ภาคเรียน</a>
+      <a href="{{ url_for('admin.users') }}">บัญชีผู้ใช้</a>
+      <a href="{{ url_for('admin.log') }}">ประวัติ</a>
+      <a href="{{ url_for('scheduler.home') }}">ตารางเรียน</a>
+    {% else %}
+      <a href="{{ url_for('scheduler.home') }}">จัดตาราง</a>
+      <a href="{{ url_for('scheduler.rooms') }}">ห้อง</a>
+      <a href="{{ url_for('scheduler.instructors') }}">อาจารย์</a>
+      <a href="{{ url_for('scheduler.log') }}">ประวัติการแก้ตาราง</a>
+    {% endif %}
+    <span class="who">{{ g.user.username }} · {{ ROLE_NAME[g.user.role] }}</span>
+    <form method="post" action="{{ url_for('logout') }}">{{ csrf_field() }}<button>ออกจากระบบ</button></form>
+  {% endif %}
 </div></header>
 <main class="wrap">
   {% for cat, msg in get_flashed_messages(with_categories=true) %}

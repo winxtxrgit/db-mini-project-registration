@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}ประวัติการแก้ตาราง{% endblock %}
+{% block content %}
+<h1>ประวัติการแก้ตาราง</h1>
+<p class="sub">schedule_log บันทึกโดย trigger ทุกครั้งที่เพิ่ม แก้ หรือลบ เวลาเรียน เวลาสอบ และอาจารย์ผู้สอน (วัน 1 = จันทร์) · ล่าสุด 300 รายการ</p>
+<div class="card table-scroll">
+  {% if logs %}
+  <table>
+    <tr><th class="num">#</th><th>เวลา</th><th>วิชา</th><th>เรื่อง</th><th>รายการ</th><th>รายละเอียด</th><th>ผู้ทำ</th></tr>
+    {% for r in logs %}
+    <tr><td class="num">{{ r.log_id }}</td><td>{{ r.logged_at }}</td><td>{{ r.course_code }} กลุ่ม {{ r.section_no }}</td>
+      <td>{{ {'MEETING':'เวลาเรียน','EXAM':'เวลาสอบ','INSTRUCTOR':'อาจารย์'}[r.entity] }}</td>
+      <td><span class="tag {{ {'ADD':'ok','CHANGE':'warn','REMOVE':'bad'}[r.action] }}">{{ r.action }}</span></td>
+      <td>{{ r.detail }}</td><td>{{ r.actor }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="empty">ยังไม่มีการแก้ตาราง</p>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,229 @@
+"""ทดสอบหน้าเว็บทั้ง 3 บทบาท: สิทธิ์ CSRF และกฎทางธุรกิจที่มาจาก trigger
+
+รัน (จากโฟลเดอร์ Mini_Project_PlanA):  python -m unittest discover -s web -v
+ใช้ฐานข้อมูลชั่วคราว ไม่แตะ web/registration.db
+"""
+import re
+import sqlite3
+import tempfile
+import unittest
+from pathlib import Path
+
+import core
+
+_tmp = tempfile.TemporaryDirectory()
+core.DB_PATH = Path(_tmp.name) / "test.db"
+
+from app import app  # noqa: E402  (ต้อง import หลังเปลี่ยน DB_PATH)
+
+PASSWORD = "demo1234"   # รหัสผ่านทดสอบจาก seed.sql
+
+
+def flashes(resp):
+    return re.findall(r'class="flash (\w+)">([^<]*)<', resp.get_data(as_text=True))
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        core.build_db()
+        app.config["TESTING"] = True
+        self.c = app.test_client()
+
+    def sql(self, query, *params):
+        con = sqlite3.connect(core.DB_PATH)
+        try:
+            with con:
+                return con.execute(query, params).fetchall()
+        finally:
+            con.close()
+
+    def csrf(self):
+        with self.c.session_transaction() as s:
+            s.setdefault("csrf", "test-token")
+            return s["csrf"]
+
+    def login(self, username):
+        r = self.c.post("/login", data={"username": username, "password": PASSWORD, "csrf_token": self.csrf()})
+        self.assertEqual(r.status_code, 302, f"login {username} failed")
+
+    def post(self, url, **data):
+        data["csrf_token"] = self.csrf()
+        return self.c.post(url, data=data, follow_redirects=True)
+
+
+class AuthTests(Base):
+    def test_requires_login(self):
+        for url in ("/me/", "/admin/", "/schedule/"):
+            r = self.c.get(url)
+            self.assertEqual(r.status_code, 302)
+            self.assertIn("/login", r.headers["Location"])
+
+    def test_wrong_password(self):
+        r = self.c.post("/login", data={"username": "admin", "password": "wrong", "csrf_token": self.csrf()})
+        self.assertIn(("error", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"), flashes(r))
+
+    def test_unknown_user_same_message(self):
+        r = self.c.post("/login", data={"username": "nobody", "password": "x", "csrf_token": self.csrf()})
+        self.assertIn(("error", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"), flashes(r))
+
+    def test_csrf_required(self):
+        self.login("6799000001")
+        r = self.c.post("/me/enroll/10", data={})
+        self.assertEqual(r.status_code, 400)
+
+    def test_open_redirect_blocked(self):
+        r = self.c.post("/login?next=//evil.example", data={"username": "admin", "password": PASSWORD,
+                                                             "csrf_token": self.csrf()})
+        self.assertFalse(r.headers["Location"].startswith("//"))
+
+    def test_role_isolation(self):
+        self.login("6799000001")
+        self.assertEqual(self.c.get("/admin/").status_code, 403)
+        self.assertEqual(self.c.get("/schedule/").status_code, 403)
+        self.c.post("/logout", data={"csrf_token": self.csrf()})
+        self.login("scheduler")
+        self.assertEqual(self.c.get("/admin/").status_code, 403)
+        self.assertEqual(self.c.get("/me/").status_code, 403)
+
+    def test_admin_can_view_but_not_edit_schedule(self):
+        self.login("admin")
+        self.assertEqual(self.c.get("/schedule/").status_code, 200)
+        r = self.post("/schedule/meetings/1/delete")
+        self.assertEqual(r.status_code, 403)
+
+    def test_deactivated_user_cannot_login(self):
+        self.sql("UPDATE app_user SET is_active = 0 WHERE username = '6799000002'")
+        r = self.c.post("/login", data={"username": "6799000002", "password": PASSWORD, "csrf_token": self.csrf()})
+        self.assertEqual(r.status_code, 200)   # อยู่หน้า login เดิม
+
+    def test_all_pages_render(self):
+        pages = {"6799000001": ["/me/", "/me/log"],
+                 "admin": ["/admin/", "/admin/terms", "/admin/sections", "/admin/students", "/admin/students/6799000001",
+                           "/admin/credits", "/admin/users", "/admin/log", "/schedule/", "/schedule/rooms"],
+                 "scheduler": ["/schedule/", "/schedule/rooms", "/schedule/instructors", "/schedule/log"]}
+        for user, urls in pages.items():
+            self.c = app.test_client()
+            self.login(user)
+            for url in urls:
+                self.assertEqual(self.c.get(url).status_code, 200, url)
+
+
+class StudentTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.login("6799000001")
+
+    def test_clash_rejected(self):
+        r = self.post("/me/enroll/10")
+        self.assertIn(("error", "ไม่สำเร็จ: เวลาเรียนชนกับวิชาที่ลงไว้แล้ว"), flashes(r))
+
+    def test_only_own_record(self):
+        # URL ไม่มีรหัสนักศึกษาให้ปลอม: ทำรายการได้เฉพาะของคนที่ login อยู่
+        self.post("/me/drop/2")
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM enrollment WHERE student_id='6799000001' AND section_id=2")[0][0], 0)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM enrollment WHERE student_id='6799000002' AND section_id=2")[0][0], 1)
+
+    def test_window_closed(self):
+        self.sql("UPDATE term SET reg_close_at = '2000-01-02 00:00', reg_open_at = '2000-01-01 00:00' WHERE is_current = 1")
+        r = self.post("/me/drop/2")
+        self.assertIn(("error", "ไม่สำเร็จ: ไม่อยู่ในช่วงลงทะเบียนของภาคเรียนนี้"), flashes(r))
+
+    def test_log_has_actor(self):
+        self.post("/me/drop/2")
+        actor = self.sql("SELECT u.username FROM registration_log l JOIN app_user u ON u.user_id = l.actor_user_id "
+                         "ORDER BY l.log_id DESC LIMIT 1")
+        self.assertEqual(actor[0][0], "6799000001")
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM app_session")[0][0], 0)   # ไม่ค้างหลังทำรายการ
+
+
+class AdminTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.login("admin")
+
+    def test_admin_ignores_window_but_not_rules(self):
+        self.sql("UPDATE term SET reg_close_at = '2000-01-02 00:00', reg_open_at = '2000-01-01 00:00' WHERE is_current = 1")
+        r = self.post("/admin/students/6799000005/drop/2")
+        self.assertIn("ok", [c for c, _ in flashes(r)])
+        r = self.post("/admin/students/6799000001/enroll/10")
+        self.assertIn(("error", "ไม่สำเร็จ: เวลาเรียนชนกับวิชาที่ลงไว้แล้ว"), flashes(r))
+
+    def test_capacity_rules_and_promote(self):
+        # เติม 310-2205 ให้เต็ม แล้วให้ F0290 เข้าคิว
+        self.sql("INSERT INTO enrollment (student_id, section_id) VALUES ('F0287',1),('F0288',1),('F0289',1)")
+        self.sql("INSERT INTO waitlist (student_id, section_id) VALUES ('F0290', 1)")
+        r = self.post("/admin/sections/1/capacity", capacity="40")
+        self.assertIn(("error", "ไม่สำเร็จ: จำนวนรับต้องไม่น้อยกว่าจำนวนที่ลงทะเบียนแล้ว"), flashes(r))
+        r = self.post("/admin/sections/1/capacity", capacity="51")
+        self.assertIn(("info", "เลื่อนจากคิวสำรอง: F0290"), flashes(r))
+
+    def test_quota_release_promotes(self):
+        self.sql("INSERT INTO waitlist (student_id, section_id) VALUES ('B6907', 9)")
+        r = self.post("/admin/sections/9/quota", curriculum_id="BBA69", seats="7")
+        self.assertIn(("info", "เลื่อนจากคิวสำรอง: B6907"), flashes(r))
+
+    def test_term_window_and_current(self):
+        r = self.post("/admin/terms/2569-2", reg_open_at="2026-10-01T08:00", reg_close_at="2026-09-01T08:00",
+                      max_credits="22")
+        self.assertIn("error", [c for c, _ in flashes(r)])            # ปิดก่อนเปิดไม่ได้ (CHECK)
+        r = self.post("/admin/terms/2569-1/current")
+        self.assertEqual(self.sql("SELECT term_id FROM term WHERE is_current = 1")[0][0], "2569-1")
+
+    def test_create_student_and_account(self):
+        r = self.post("/admin/students/new", student_id="6999000001", first_name="ทดสอบ", last_name="ใหม่",
+                      curriculum_id="CPE63", entry_year="2569", password="short")
+        self.assertIn("error", [c for c, _ in flashes(r)])
+        self.post("/admin/students/new", student_id="6999000001", first_name="ทดสอบ", last_name="ใหม่",
+                  curriculum_id="CPE63", entry_year="2569", password="longenough1")
+        self.assertEqual(self.sql("SELECT role FROM app_user WHERE username = '6999000001'")[0][0], "student")
+
+    def test_cannot_disable_self(self):
+        uid = self.sql("SELECT user_id FROM app_user WHERE username = 'admin'")[0][0]
+        r = self.post(f"/admin/users/{uid}/toggle")
+        self.assertIn(("error", "ไม่สำเร็จ: ปิดบัญชีของตัวเองไม่ได้"), flashes(r))
+
+
+class SchedulerTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.login("scheduler")
+
+    def test_room_clash(self):
+        r = self.post("/schedule/sections/2/meetings", day_of_week="3", start_time="09:00", end_time="10:00",
+                      room_code="15208")
+        self.assertIn(("error", "ไม่สำเร็จ: ห้องเรียนนี้ถูกใช้ในวันและเวลาเดียวกันแล้ว"), flashes(r))
+
+    def test_move_meeting_clashes_students(self):
+        mid = self.sql("SELECT meeting_id FROM class_meeting WHERE section_id = 6")[0][0]
+        r = self.post(f"/schedule/meetings/{mid}", day_of_week="2", start_time="13:00", end_time="16:00",
+                      room_code="15309")
+        self.assertIn(("error", "ไม่สำเร็จ: มีนักศึกษาที่ลงทะเบียนแล้วเรียนวิชาอื่นในเวลานี้"), flashes(r))
+
+    def test_real_case_fix_and_log(self):
+        # ย้าย 310-2205 ไปวันศุกร์ (กรณีจริงใน README) ผ่าน และมีประวัติพร้อมผู้ทำ
+        mid = self.sql("SELECT meeting_id FROM class_meeting WHERE section_id = 1")[0][0]
+        r = self.post(f"/schedule/meetings/{mid}", day_of_week="5", start_time="09:00", end_time="12:00",
+                      room_code="15208")
+        self.assertIn(("ok", "แก้เวลาเรียนแล้ว"), flashes(r))
+        log = self.sql("SELECT l.action, u.username FROM schedule_log l JOIN app_user u ON u.user_id = l.actor_user_id")
+        self.assertEqual(log, [("CHANGE", "scheduler")])
+
+    def test_bad_time_format(self):
+        r = self.post("/schedule/sections/2/meetings", day_of_week="5", start_time="9am", end_time="12:00",
+                      room_code="")
+        self.assertIn("error", [c for c, _ in flashes(r)])
+
+    def test_instructor_clash(self):
+        r = self.post("/schedule/sections/10/instructors", instructor_id="1")
+        self.assertIn(("error", "ไม่สำเร็จ: อาจารย์ท่านนี้มีคาบสอนวิชาอื่นในเวลาเดียวกับกลุ่มเรียนนี้"), flashes(r))
+
+    def test_exam_room_capacity(self):
+        self.post("/schedule/rooms", room_code="R-SMALL", capacity="10")
+        eid = self.sql("SELECT exam_id FROM exam WHERE section_id = 10")[0][0]
+        r = self.post(f"/schedule/exams/{eid}", exam_date="2027-03-08", start_time="09:00", end_time="12:00",
+                      room_code="R-SMALL")
+        self.assertIn(("error", "ไม่สำเร็จ: ห้องสอบจุไม่พอสำหรับจำนวนนักศึกษาที่ลงทะเบียน"), flashes(r))
+
+
+if __name__ == "__main__":
+    unittest.main()

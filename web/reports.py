@@ -1,15 +1,20 @@
-"""SQL ของรายงาน R1–R6 (ชุดเดียวกับ queries.sql แต่รับรหัสนักศึกษาเป็นพารามิเตอร์ :sid)"""
+"""SQL ของหน้าเว็บ: รายงาน R1–R9 (ชุดเดียวกับ queries.sql แต่รับพารามิเตอร์) และข้อมูลสำหรับหน้าจัดการ"""
 
 DAY_NAME = "CASE {col} WHEN 1 THEN 'จ.' WHEN 2 THEN 'อ.' WHEN 3 THEN 'พ.' WHEN 4 THEN 'พฤ.' " \
            "WHEN 5 THEN 'ศ.' WHEN 6 THEN 'ส.' ELSE 'อา.' END"
 
+# ------------------------------------------------------------------ นักศึกษา
 STUDENT_INFO = """
 SELECT s.student_id, s.first_name, s.last_name, s.curriculum_id, p.program_name,
-       lv.year_level, lv.semester, lv.term_id
+       lv.year_level, lv.semester, lv.term_id,
+       ts.reg_open_at, ts.reg_close_at, ts.reg_is_open, ts.max_credits,
+       COALESCE(cr.credits, 0) AS credits
 FROM student s
 JOIN curriculum cu ON cu.curriculum_id = s.curriculum_id
 JOIN program p     ON p.program_code = cu.program_code
 JOIN v_student_level lv ON lv.student_id = s.student_id
+JOIN v_term_status ts   ON ts.term_id = lv.term_id
+LEFT JOIN v_student_credits cr ON cr.student_id = s.student_id AND cr.term_id = lv.term_id
 WHERE s.student_id = :sid
 """
 
@@ -55,24 +60,28 @@ clash AS (
                        AND m.start_time < c.end_time AND c.start_time < m.end_time
   WHERE m.student_id = :sid
   GROUP BY c.section_id, m.student_id, c.kind
+),
+judged AS (
+  SELECT t.course_code, c.name_th, s.section_no AS sec,
+         CASE
+           WHEN s.section_id IS NULL        THEN 'ไม่เปิดสอนเทอมนี้'
+           WHEN cc.with_course IS NOT NULL  THEN 'เวลาเรียนชนกับ ' || cc.with_course
+           WHEN ce.with_course IS NOT NULL  THEN 'เวลาสอบชนกับ ' || ce.with_course
+           WHEN sf.seats_left <= 0          THEN 'ที่นั่ง/โควตาเต็ม'
+           WHEN COALESCE(cr.credits, 0) + c.credits > tm.max_credits
+                                            THEN 'หน่วยกิตจะเกินเพดาน ' || tm.max_credits
+           ELSE 'ลงได้ (เหลือ ' || sf.seats_left || ' ที่)'
+         END AS result
+  FROM todo t
+  JOIN course c ON c.course_code = t.course_code
+  JOIN term tm  ON tm.term_id = t.term_id
+  LEFT JOIN section s ON s.course_code = t.course_code AND s.term_id = t.term_id
+  LEFT JOIN clash cc ON cc.section_id = s.section_id AND cc.kind = 'CLASS'
+  LEFT JOIN clash ce ON ce.section_id = s.section_id AND ce.kind = 'EXAM'
+  LEFT JOIN v_seat_for_student sf ON sf.section_id = s.section_id AND sf.student_id = t.student_id
+  LEFT JOIN v_student_credits cr ON cr.student_id = t.student_id AND cr.term_id = t.term_id
 )
-SELECT t.course_code, c.name_th, s.section_no AS sec,
-       CASE
-         WHEN s.section_id IS NULL        THEN 'ไม่เปิดสอนเทอมนี้'
-         WHEN cc.with_course IS NOT NULL  THEN 'เวลาเรียนชนกับ ' || cc.with_course
-         WHEN ce.with_course IS NOT NULL  THEN 'เวลาสอบชนกับ ' || ce.with_course
-         WHEN sf.seats_left <= 0          THEN 'ที่นั่ง/โควตาเต็ม'
-         ELSE 'ลงได้ (เหลือ ' || sf.seats_left || ' ที่)'
-       END AS result,
-       (s.section_id IS NOT NULL AND cc.with_course IS NULL AND ce.with_course IS NULL
-        AND sf.seats_left > 0) AS ok
-FROM todo t
-JOIN course c ON c.course_code = t.course_code
-LEFT JOIN section s ON s.course_code = t.course_code AND s.term_id = t.term_id
-LEFT JOIN clash cc ON cc.section_id = s.section_id AND cc.kind = 'CLASS'
-LEFT JOIN clash ce ON ce.section_id = s.section_id AND ce.kind = 'EXAM'
-LEFT JOIN v_seat_for_student sf ON sf.section_id = s.section_id AND sf.student_id = t.student_id
-ORDER BY t.course_code
+SELECT *, result LIKE 'ลงได้%' AS ok FROM judged ORDER BY course_code
 """
 
 R3_EXAMS = """
@@ -86,41 +95,6 @@ JOIN exam x    ON x.section_id = s.section_id
 JOIN term t    ON t.term_id = s.term_id AND t.is_current = 1
 WHERE e.student_id = :sid
 ORDER BY x.exam_date, x.start_time
-"""
-
-R4_SEAT_DEMAND = """
-WITH need AS (
-  SELECT sp.course_code, COUNT(*) AS students_need
-  FROM v_student_level lv
-  JOIN study_plan sp ON sp.curriculum_id = lv.curriculum_id AND sp.is_required = 1
-  WHERE (sp.year_level < lv.year_level OR (sp.year_level = lv.year_level AND sp.semester <= lv.semester))
-    AND NOT EXISTS (SELECT 1 FROM v_passed v WHERE v.student_id = lv.student_id AND v.course_code = sp.course_code)
-  GROUP BY sp.course_code
-),
-offer AS (
-  SELECT s.course_code, COUNT(*) AS sections, SUM(ss.capacity) AS seats, SUM(ss.available) AS available
-  FROM section s JOIN v_section_seat ss ON ss.section_id = s.section_id
-  JOIN term t ON t.term_id = s.term_id AND t.is_current = 1
-  GROUP BY s.course_code
-)
-SELECT n.course_code, c.name_th, n.students_need,
-       COALESCE(o.sections, 0) AS sections, COALESCE(o.seats, 0) AS seats, COALESCE(o.available, 0) AS available,
-       CASE WHEN o.course_code IS NULL THEN 'ไม่เปิดสอน'
-            WHEN o.available = 0      THEN 'เต็ม'
-            ELSE '' END AS alert
-FROM need n JOIN course c ON c.course_code = n.course_code
-LEFT JOIN offer o ON o.course_code = n.course_code
-ORDER BY (o.course_code IS NULL) DESC, n.course_code
-"""
-
-R5_QUOTA_LOCKED = """
-SELECT s.course_code, c.name_th, s.section_no AS sec, q.curriculum_id, q.used, q.seats,
-       ss.enrolled, ss.capacity, ss.available AS section_free
-FROM v_quota_seat q
-JOIN section s         ON s.section_id = q.section_id
-JOIN course c          ON c.course_code = s.course_code
-JOIN v_section_seat ss ON ss.section_id = q.section_id
-WHERE q.quota_left <= 0 AND ss.available > 0
 """
 
 R6_BACKLOG_CLASH = f"""
@@ -182,9 +156,12 @@ SELECT s.section_id, s.course_code, c.name_th, c.credits, s.section_no,
           JOIN v_student_slot m ON m.student_id = :sid AND m.term_id = s.term_id
            AND m.kind = c.kind AND m.slot_key = c.slot_key
            AND m.start_time < c.end_time AND c.start_time < m.end_time
-         WHERE c.section_id = s.section_id AND c.kind = 'EXAM' AND m.section_id <> s.section_id) AS exam_clash
+         WHERE c.section_id = s.section_id AND c.kind = 'EXAM' AND m.section_id <> s.section_id) AS exam_clash,
+       COALESCE((SELECT credits FROM v_student_credits cr
+                  WHERE cr.student_id = :sid AND cr.term_id = s.term_id), 0) + c.credits > tm.max_credits AS over_credit
 FROM section s
 JOIN me ON me.term_id = s.term_id
+JOIN term tm ON tm.term_id = s.term_id
 JOIN course c ON c.course_code = s.course_code
 JOIN v_section_seat ss ON ss.section_id = s.section_id
 JOIN v_seat_for_student sf ON sf.section_id = s.section_id AND sf.student_id = :sid
@@ -196,9 +173,8 @@ ORDER BY (sp.course_code IS NULL), s.course_code, s.section_no
 
 WAITLIST_RANK = """
 SELECT w.section_id, w.course_code, c.name_th, s.section_no, w.student_id,
-       st.first_name || ' ' || st.last_name AS student_name, w.priority,
-       datetime(w.requested_at, 'localtime') AS requested_at,
-       w.no_conflict, w.seats_left,
+       st.first_name || ' ' || st.last_name AS student_name, w.priority, w.requested_at,
+       w.no_conflict, w.seats_left, w.credits_ok, w.prereq_ok, w.eligible,
        ROW_NUMBER() OVER (PARTITION BY w.section_id ORDER BY w.priority, w.requested_at) AS queue_no
 FROM v_waitlist_rank w
 JOIN section s ON s.section_id = w.section_id
@@ -207,24 +183,172 @@ JOIN student st ON st.student_id = w.student_id
 ORDER BY w.course_code, s.section_no, queue_no
 """
 
-SECTION_SEATS = """
-SELECT ss.section_id, ss.course_code, c.name_th, ss.section_no, ss.enrolled, ss.capacity, ss.available,
-       (SELECT COUNT(*) FROM waitlist w WHERE w.section_id = ss.section_id) AS waiting
+REG_LOG = """
+SELECT l.log_id, substr(l.logged_at, 1, 19) AS logged_at, l.student_id,
+       st.first_name || ' ' || st.last_name AS student_name,
+       s.course_code, c.name_th, s.section_no, l.action,
+       COALESCE(u.username, 'ระบบ') AS actor, u.role AS actor_role
+FROM registration_log l
+JOIN student st ON st.student_id = l.student_id
+JOIN section s  ON s.section_id = l.section_id
+JOIN course c   ON c.course_code = s.course_code
+LEFT JOIN app_user u ON u.user_id = l.actor_user_id
+WHERE (:sid = '' OR l.student_id = :sid)
+  AND (:action = '' OR l.action = :action)
+ORDER BY l.log_id DESC
+LIMIT 300
+"""
+
+# ------------------------------------------------------------------ ฝ่ายทะเบียน
+R4_SEAT_DEMAND = """
+WITH need AS (
+  SELECT sp.course_code, COUNT(*) AS students_need
+  FROM v_student_level lv
+  JOIN study_plan sp ON sp.curriculum_id = lv.curriculum_id AND sp.is_required = 1
+  WHERE (sp.year_level < lv.year_level OR (sp.year_level = lv.year_level AND sp.semester <= lv.semester))
+    AND NOT EXISTS (SELECT 1 FROM v_passed v WHERE v.student_id = lv.student_id AND v.course_code = sp.course_code)
+  GROUP BY sp.course_code
+),
+offer AS (
+  SELECT s.course_code, COUNT(*) AS sections, SUM(ss.capacity) AS seats, SUM(ss.available) AS available
+  FROM section s JOIN v_section_seat ss ON ss.section_id = s.section_id
+  JOIN term t ON t.term_id = s.term_id AND t.is_current = 1
+  GROUP BY s.course_code
+)
+SELECT n.course_code, c.name_th, n.students_need,
+       COALESCE(o.sections, 0) AS sections, COALESCE(o.seats, 0) AS seats, COALESCE(o.available, 0) AS available,
+       CASE WHEN o.course_code IS NULL THEN 'ไม่เปิดสอน'
+            WHEN o.available = 0      THEN 'เต็ม'
+            ELSE '' END AS alert
+FROM need n JOIN course c ON c.course_code = n.course_code
+LEFT JOIN offer o ON o.course_code = n.course_code
+ORDER BY (o.course_code IS NULL) DESC, n.course_code
+"""
+
+R5_QUOTA_LOCKED = """
+SELECT s.section_id, s.course_code, c.name_th, s.section_no AS sec, q.curriculum_id, q.used, q.seats,
+       ss.enrolled, ss.capacity, ss.available AS section_free
+FROM v_quota_seat q
+JOIN section s         ON s.section_id = q.section_id
+JOIN course c          ON c.course_code = s.course_code
+JOIN v_section_seat ss ON ss.section_id = q.section_id
+JOIN term t            ON t.term_id = s.term_id AND t.is_current = 1
+WHERE q.quota_left <= 0 AND ss.available > 0
+"""
+
+R7_CREDITS = """
+SELECT s.student_id, s.first_name || ' ' || s.last_name AS name, s.curriculum_id,
+       COALESCE(cr.courses, 0) AS courses, COALESCE(cr.credits, 0) AS credits, t.max_credits
+FROM student s
+JOIN term t ON t.is_current = 1
+LEFT JOIN v_student_credits cr ON cr.student_id = s.student_id AND cr.term_id = t.term_id
+WHERE (:q = '' OR s.student_id LIKE :q || '%' OR s.first_name LIKE '%' || :q || '%'
+       OR s.curriculum_id = :q)
+ORDER BY s.curriculum_id = 'EXT', s.student_id
+LIMIT 200
+"""
+
+STUDENT_LIST = """
+SELECT s.student_id, s.first_name, s.last_name, s.curriculum_id, s.entry_year,
+       u.username, u.is_active, COALESCE(cr.credits, 0) AS credits
+FROM student s
+JOIN term t ON t.is_current = 1
+LEFT JOIN app_user u ON u.student_id = s.student_id
+LEFT JOIN v_student_credits cr ON cr.student_id = s.student_id AND cr.term_id = t.term_id
+WHERE (:q = '' OR s.student_id LIKE :q || '%' OR s.first_name LIKE '%' || :q || '%'
+       OR s.last_name LIKE '%' || :q || '%' OR s.curriculum_id = :q)
+ORDER BY s.curriculum_id = 'EXT', s.student_id
+LIMIT 200
+"""
+
+TERMS = """
+SELECT term_id, academic_year, semester, is_current, reg_open_at, reg_close_at, reg_is_open, max_credits
+FROM v_term_status ORDER BY academic_year DESC, semester DESC
+"""
+
+SECTIONS_ADMIN = """
+SELECT ss.section_id, ss.course_code, c.name_th, c.credits, ss.section_no, ss.term_id,
+       ss.capacity, ss.enrolled, ss.available,
+       (SELECT COUNT(*) FROM waitlist w WHERE w.section_id = ss.section_id) AS waiting,
+       (SELECT COUNT(*) FROM v_waitlist_next n WHERE n.section_id = ss.section_id) AS can_promote,
+       (SELECT group_concat(q.curriculum_id || ' ' || q.used || '/' || q.seats, ', ')
+          FROM v_quota_seat q WHERE q.section_id = ss.section_id) AS quotas
 FROM v_section_seat ss
 JOIN course c ON c.course_code = ss.course_code
 JOIN term t ON t.term_id = ss.term_id AND t.is_current = 1
 ORDER BY ss.course_code, ss.section_no
 """
 
-LOG = """
-SELECT l.log_id, datetime(l.logged_at, 'localtime') AS logged_at, l.student_id, st.first_name || ' ' || st.last_name AS student_name,
-       s.course_code, c.name_th, s.section_no, l.action
-FROM registration_log l
-JOIN student st ON st.student_id = l.student_id
-JOIN section s  ON s.section_id = l.section_id
-JOIN course c   ON c.course_code = s.course_code
-WHERE (:sid = '' OR l.student_id = :sid)
-  AND (:action = '' OR l.action = :action)
+USERS = """
+SELECT u.user_id, u.username, u.role, u.student_id, u.instructor_id, i.full_name AS instructor_name,
+       u.is_active, u.created_at
+FROM app_user u LEFT JOIN instructor i ON i.instructor_id = u.instructor_id
+WHERE (:q = '' OR u.username LIKE '%' || :q || '%' OR u.role = :q)
+ORDER BY CASE u.role WHEN 'admin' THEN 1 WHEN 'scheduler' THEN 2 ELSE 3 END, u.username
+"""
+
+# ------------------------------------------------------------------ ผู้จัดตาราง
+SCHED_SECTIONS = """
+SELECT s.section_id, s.course_code, c.name_th, s.section_no, s.capacity,
+       (SELECT COUNT(*) FROM enrollment e WHERE e.section_id = s.section_id) AS enrolled
+FROM section s
+JOIN course c ON c.course_code = s.course_code
+JOIN term t ON t.term_id = s.term_id AND t.is_current = 1
+ORDER BY s.course_code, s.section_no
+"""
+
+SCHED_MEETINGS = """
+SELECT cm.* FROM class_meeting cm
+JOIN section s ON s.section_id = cm.section_id
+JOIN term t ON t.term_id = s.term_id AND t.is_current = 1
+ORDER BY cm.day_of_week, cm.start_time
+"""
+
+SCHED_EXAMS = """
+SELECT x.* FROM exam x
+JOIN section s ON s.section_id = x.section_id
+JOIN term t ON t.term_id = s.term_id AND t.is_current = 1
+ORDER BY x.exam_date, x.start_time
+"""
+
+SCHED_INSTRUCTORS = """
+SELECT si.section_id, i.instructor_id, i.full_name
+FROM section_instructor si JOIN instructor i ON i.instructor_id = si.instructor_id
+ORDER BY i.full_name
+"""
+
+R8_ROOM_USAGE = f"""
+SELECT u.room_code, r.capacity, u.day_of_week, {DAY_NAME.format(col="u.day_of_week")} AS day,
+       u.start_time || '-' || u.end_time AS time, u.course_code, u.section_no
+FROM v_room_usage u
+JOIN room r ON r.room_code = u.room_code
+JOIN term t ON t.term_id = u.term_id AND t.is_current = 1
+ORDER BY u.room_code, u.day_of_week, u.start_time
+"""
+
+R9_INSTRUCTOR_LOAD = """
+SELECT i.instructor_id, i.full_name, COUNT(DISTINCT b.section_id) AS sections,
+       COALESCE(SUM((CAST(substr(b.end_time, 1, 2) AS INTEGER) * 60 + CAST(substr(b.end_time, 4, 2) AS INTEGER)
+                   - CAST(substr(b.start_time, 1, 2) AS INTEGER) * 60 - CAST(substr(b.start_time, 4, 2) AS INTEGER)) / 60.0), 0)
+         AS hours_per_week,
+       (SELECT group_concat(DISTINCT s.course_code) FROM section_instructor si
+          JOIN section s ON s.section_id = si.section_id
+          JOIN term t ON t.term_id = s.term_id AND t.is_current = 1
+         WHERE si.instructor_id = i.instructor_id) AS courses
+FROM instructor i
+LEFT JOIN v_instructor_busy b ON b.instructor_id = i.instructor_id
+     AND b.term_id = (SELECT term_id FROM term WHERE is_current = 1)
+GROUP BY i.instructor_id
+ORDER BY hours_per_week DESC, i.full_name
+"""
+
+SCHEDULE_LOG = """
+SELECT l.log_id, substr(l.logged_at, 1, 19) AS logged_at, s.course_code, c.name_th, s.section_no,
+       l.entity, l.action, l.detail, COALESCE(u.username, 'ระบบ') AS actor
+FROM schedule_log l
+JOIN section s ON s.section_id = l.section_id
+JOIN course c  ON c.course_code = s.course_code
+LEFT JOIN app_user u ON u.user_id = l.actor_user_id
 ORDER BY l.log_id DESC
 LIMIT 300
 """

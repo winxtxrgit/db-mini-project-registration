@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}อาจารย์{% endblock %}
+{% block content %}
+<h1>R9 ภาระสอนของอาจารย์ในภาคปัจจุบัน</h1>
+<div class="card table-scroll">
+  <table>
+    <tr><th>อาจารย์</th><th class="num">กลุ่มเรียน</th><th class="num">ชั่วโมง/สัปดาห์</th><th>วิชา</th></tr>
+    {% for r in load %}
+    <tr><td>{{ r.full_name }}</td><td class="num">{{ r.sections }}</td><td class="num">{{ '%.1f'|format(r.hours_per_week) }}</td><td>{{ r.courses or '-' }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

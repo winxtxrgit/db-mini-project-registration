@@ -1,175 +1,124 @@
 """หน้าเว็บของระบบลงทะเบียนตามแผนการเรียน (Flask + SQLite)
 
-กฎการลงทะเบียนทั้งหมดอยู่ใน trigger ของ schema.sql หน้าเว็บแค่ส่ง INSERT/DELETE
-แล้วแสดงข้อความ error จาก RAISE(ABORT, ...) ให้ผู้ใช้เห็น
+ผู้ใช้ 3 บทบาท: นักศึกษา / ฝ่ายทะเบียน (admin) / อาจารย์ผู้จัดตาราง (scheduler)
+- กฎทางธุรกิจทั้งหมดอยู่ใน trigger ของ schema.sql แอปแค่ส่งคำสั่งแล้วแสดงข้อความ error จาก RAISE(ABORT)
+- แอปตรวจสิทธิ์ (ใครเข้าหน้าไหน แก้ข้อมูลของใครได้) และบอกฐานข้อมูลว่าใครทำรายการผ่านตาราง app_session
 
-รัน:  python web/app.py   แล้วเปิด http://127.0.0.1:5000
+รัน:  python web/app.py   แล้วเปิด http://127.0.0.1:5000  (บัญชีทดสอบอยู่ใน seed.sql)
 """
-import sqlite3
-from pathlib import Path
+import secrets
 
-from flask import Flask, flash, g, redirect, render_template, request, url_for
+from markupsafe import Markup
+from flask import (Flask, abort, flash, g, redirect, render_template, request,
+                   session, url_for)
+from werkzeug.security import check_password_hash, generate_password_hash
 
-import reports as R
+from core import BASE, DAYS, HOME, ROLE_NAME, close_db, one
+from views_admin import bp as admin_bp
+from views_scheduler import bp as scheduler_bp
+from views_student import bp as student_bp
 
-BASE = Path(__file__).resolve().parent
-PROJECT = BASE.parent
-DB_PATH = BASE / "registration.db"
+SECRET_FILE = BASE / ".secret_key"
 
 app = Flask(__name__)
-app.secret_key = "mini-project-plan-a"  # ใช้กับ flash message เท่านั้น
 
 
-# ------------------------------------------------------------------ ฐานข้อมูล
-def build_db() -> None:
-    """สร้างฐานข้อมูลใหม่จาก schema.sql + seed.sql (ไม่รัน demo.sql)"""
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-    con = sqlite3.connect(DB_PATH)
-    try:
-        for name in ("schema.sql", "seed.sql"):
-            con.executescript((PROJECT / name).read_text(encoding="utf-8"))
-        con.commit()
-    finally:
-        con.close()
+def _secret_key() -> str:
+    """สร้าง secret key แบบสุ่มครั้งแรกแล้วเก็บไว้ในไฟล์ (ไม่ขึ้น git) เพื่อให้ session อยู่ข้ามการรีสตาร์ต"""
+    if not SECRET_FILE.exists():
+        SECRET_FILE.write_text(secrets.token_hex(32), encoding="utf-8")
+    return SECRET_FILE.read_text(encoding="utf-8").strip()
 
 
-def db() -> sqlite3.Connection:
-    if "db" not in g:
-        if not DB_PATH.exists():
-            build_db()
-        con = sqlite3.connect(DB_PATH)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA foreign_keys = ON")
-        g.db = con
-    return g.db
+app.secret_key = _secret_key()
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+app.jinja_env.globals.update(DAYS=DAYS, ROLE_NAME=ROLE_NAME)
+app.teardown_appcontext(close_db)
+app.register_blueprint(student_bp)
+app.register_blueprint(admin_bp)
+app.register_blueprint(scheduler_bp)
 
 
-@app.teardown_appcontext
-def close_db(_exc):
-    con = g.pop("db", None)
-    if con is not None:
-        con.close()
+# ------------------------------------------------------------------ login และสิทธิ์
+@app.before_request
+def load_user():
+    g.user = None
+    uid = session.get("uid")
+    if uid is not None:
+        user = one("SELECT * FROM app_user WHERE user_id = :uid AND is_active = 1", uid=uid)
+        if user is None:
+            session.clear()
+        else:
+            g.user = user
 
 
-def rows(sql: str, **params):
-    return db().execute(sql, params).fetchall()
+def csrf_token() -> str:
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_urlsafe(32)
+    return session["csrf"]
 
 
-def run_write(sql: str, params: tuple, ok_msg: str) -> None:
-    """INSERT/DELETE ใน transaction เดียว ถ้า trigger ปฏิเสธก็ rollback แล้วแสดงเหตุผล"""
-    con = db()
-    try:
-        with con:
-            con.execute(sql, params)
-        flash(ok_msg, "ok")
-    except sqlite3.DatabaseError as exc:  # RAISE(ABORT) มาเป็น IntegrityError
-        flash(f"ไม่สำเร็จ: {exc}", "error")
+app.jinja_env.globals["csrf_token"] = csrf_token
+app.jinja_env.globals["csrf_field"] = lambda: Markup(
+    f'<input type="hidden" name="csrf_token" value="{csrf_token()}">')
 
 
-def section_label(section_id: int) -> str:
-    r = db().execute(
-        "SELECT s.course_code, c.name_th, s.section_no FROM section s "
-        "JOIN course c ON c.course_code = s.course_code WHERE s.section_id = ?",
-        (section_id,),
-    ).fetchone()
-    return f"{r['course_code']} {r['name_th']} กลุ่ม {r['section_no']}" if r else str(section_id)
+@app.before_request
+def check_csrf():
+    if request.method == "POST":
+        token = request.form.get("csrf_token", "")
+        if not token or not secrets.compare_digest(token, session.get("csrf", "")):
+            abort(400, "CSRF token ไม่ถูกต้อง กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง")
 
 
-# ------------------------------------------------------------------ หน้าเว็บ
+def _safe_next(target: str) -> bool:
+    """อนุญาตเฉพาะ path ภายในเว็บนี้ (กัน open redirect เช่น //evil.com หรือ /\\evil.com)"""
+    return target.startswith("/") and not target.startswith(("//", "/\\"))
+
+
+# ใช้ตรวจรหัสผ่านกับ username ที่ไม่มีอยู่ เพื่อให้เวลาตอบสนองใกล้เคียงกัน (กันการเดาว่ามี username นี้หรือไม่)
+_DUMMY_HASH = generate_password_hash("not-a-real-password")
+
+
 @app.route("/")
 def index():
-    students = rows(
-        """SELECT s.student_id, s.first_name, s.last_name, s.curriculum_id, lv.year_level
-           FROM student s JOIN v_student_level lv ON lv.student_id = s.student_id
-           WHERE s.curriculum_id <> 'EXT'
-           ORDER BY s.curriculum_id = 'CPE63' DESC, s.curriculum_id, s.student_id"""
-    )
-    return render_template("index.html", students=students)
+    if g.user is None:
+        return redirect(url_for("login"))
+    return redirect(url_for(HOME[g.user["role"]]))
 
 
-@app.route("/go")
-def go():
-    sid = request.args.get("sid", "").strip()
-    return redirect(url_for("student", sid=sid)) if sid else redirect(url_for("index"))
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        user = one("SELECT * FROM app_user WHERE username = :u", u=username)
+        ok = check_password_hash(user["password_hash"] if user else _DUMMY_HASH, password)
+        if user and ok and user["is_active"]:
+            session.clear()                      # กัน session fixation
+            session["uid"] = user["user_id"]
+            nxt = request.args.get("next", "")
+            if _safe_next(nxt):
+                return redirect(nxt)
+            return redirect(url_for(HOME[user["role"]]))
+        flash("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", "error")
+    return render_template("login.html")
 
 
-@app.route("/student/<sid>")
-def student(sid):
-    info = db().execute(R.STUDENT_INFO, {"sid": sid}).fetchone()
-    if info is None:
-        flash(f"ไม่พบนักศึกษารหัส {sid}", "error")
-        return redirect(url_for("index"))
-    return render_template(
-        "student.html",
-        s=info,
-        plan=rows(R.R1_PLAN_STATUS, sid=sid),
-        why=rows(R.R2_WHY_NOT, sid=sid),
-        exams=rows(R.R3_EXAMS, sid=sid),
-        backlog=rows(R.R6_BACKLOG_CLASH, sid=sid),
-        sections=rows(R.SECTIONS_FOR_STUDENT, sid=sid),
-        waits=rows("SELECT * FROM (" + R.WAITLIST_RANK + ") WHERE student_id = :sid", sid=sid),
-    )
+@app.post("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
-@app.post("/student/<sid>/enroll/<int:section_id>")
-def enroll(sid, section_id):
-    run_write("INSERT INTO enrollment (student_id, section_id) VALUES (?, ?)",
-              (sid, section_id), f"ลงทะเบียน {section_label(section_id)} แล้ว")
-    return redirect(url_for("student", sid=sid) + "#register")
+@app.errorhandler(403)
+def forbidden(_e):
+    return render_template("error.html", code=403, message="บัญชีนี้ไม่มีสิทธิ์เข้าหน้านี้"), 403
 
 
-@app.post("/student/<sid>/drop/<int:section_id>")
-def drop(sid, section_id):
-    before = {r[0] for r in db().execute(
-        "SELECT student_id FROM enrollment WHERE section_id = ?", (section_id,))}
-    run_write("DELETE FROM enrollment WHERE student_id = ? AND section_id = ?",
-              (sid, section_id), f"ถอน {section_label(section_id)} แล้ว")
-    promoted = [r[0] for r in db().execute(
-        "SELECT student_id FROM enrollment WHERE section_id = ?", (section_id,)) if r[0] not in before]
-    if promoted:
-        flash(f"ระบบเลื่อน {', '.join(promoted)} จากคิวสำรองขึ้นมาแทนอัตโนมัติ", "info")
-    return redirect(url_for("student", sid=sid) + "#register")
-
-
-@app.post("/student/<sid>/waitlist/<int:section_id>")
-def join_waitlist(sid, section_id):
-    run_write("INSERT INTO waitlist (student_id, section_id) VALUES (?, ?)",
-              (sid, section_id), f"เข้าคิวสำรอง {section_label(section_id)} แล้ว")
-    return redirect(url_for("student", sid=sid) + "#register")
-
-
-@app.post("/student/<sid>/unwait/<int:section_id>")
-def leave_waitlist(sid, section_id):
-    run_write("DELETE FROM waitlist WHERE student_id = ? AND section_id = ?",
-              (sid, section_id), f"ออกจากคิว {section_label(section_id)} แล้ว")
-    return redirect(url_for("student", sid=sid) + "#register")
-
-
-@app.route("/registrar")
-def registrar():
-    return render_template(
-        "registrar.html",
-        demand=rows(R.R4_SEAT_DEMAND),
-        locked=rows(R.R5_QUOTA_LOCKED),
-        seats=rows(R.SECTION_SEATS),
-        queue=rows(R.WAITLIST_RANK),
-    )
-
-
-@app.route("/log")
-def log():
-    sid = request.args.get("sid", "").strip()
-    action = request.args.get("action", "").strip()
-    return render_template("log.html", logs=rows(R.LOG, sid=sid, action=action), sid=sid, action=action)
-
-
-@app.post("/reset")
-def reset():
-    close_db(None)
-    build_db()
-    flash("รีเซ็ตฐานข้อมูลกลับเป็นข้อมูลตั้งต้นแล้ว", "ok")
-    return redirect(request.referrer or url_for("index"))
+@app.errorhandler(400)
+def bad_request(e):
+    return render_template("error.html", code=400, message=e.description), 400
 
 
 if __name__ == "__main__":

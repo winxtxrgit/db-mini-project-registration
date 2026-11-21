@@ -1,8 +1,20 @@
 {% extends "base.html" %}
-{% block title %}{{ s.student_id }} · ระบบลงทะเบียน{% endblock %}
+{% set act_ep = 'student.act' if ep == 'student' else 'admin.student_act' %}
+{% macro action_btn(action, section_id, label, cls='btn', title='') -%}
+  <form method="post" class="inline" action="{{ url_for(act_ep, action=action, section_id=section_id, **ukw) }}">
+    {{ csrf_field() }}<button class="{{ cls }}" {% if title %}title="{{ title }}"{% endif %}>{{ label }}</button>
+  </form>
+{%- endmacro %}
+{% block title %}{{ s.student_id }} · ลงทะเบียน{% endblock %}
 {% block content %}
+{% if ep == 'admin' %}<p><a href="{{ url_for('admin.students') }}">← รายชื่อนักศึกษา</a> · <span class="tag info">ฝ่ายทะเบียนทำรายการแทนนักศึกษา (ไม่ติดช่วงลงทะเบียน กฎอื่นใช้เหมือนเดิม)</span></p>{% endif %}
 <h1>{{ s.student_id }} {{ s.first_name }} {{ s.last_name }}</h1>
 <p class="sub">{{ s.program_name }} · หลักสูตร {{ s.curriculum_id }} · ชั้นปี {{ s.year_level }} ภาค {{ s.semester }} (ภาคเรียน {{ s.term_id }})</p>
+<p>
+  {% if s.reg_is_open %}<span class="tag ok">เปิดลงทะเบียน ถึง {{ s.reg_close_at }}</span>
+  {% else %}<span class="tag bad">ไม่อยู่ในช่วงลงทะเบียน{% if s.reg_open_at %} ({{ s.reg_open_at }} ถึง {{ s.reg_close_at }}){% endif %}</span>{% endif %}
+  <span class="tag {{ 'warn' if s.credits >= s.max_credits else 'info' }}">หน่วยกิต {{ s.credits }} / {{ s.max_credits }}</span>
+</p>
 
 <div class="grid">
   <section class="card">
@@ -52,11 +64,10 @@
     <h2>R6 วิชาค้างที่ชนกับวิชาบังคับเทอมนี้</h2>
     {% if backlog %}
     <div class="table-scroll"><table>
-      <tr><th>วิชาค้าง</th><th>ชนกับ (ตามแผน)</th><th>ชนเรื่อง</th><th>วัน</th><th>เวลา</th></tr>
+      <tr><th>วิชาค้าง</th><th>ชนกับ</th><th>เรื่อง</th><th>วัน</th><th>เวลา</th></tr>
       {% for r in backlog %}
-      <tr><td>{{ r.backlog_course }} ({{ r.sec }})</td><td>{{ r.plan_course }} ({{ r.plan_sec }})</td>
-        <td><span class="tag bad">{{ r.clash }}</span></td><td>{{ r.day_or_date }}</td>
-        <td>{{ r.backlog_time }} / {{ r.plan_time }}</td></tr>
+      <tr><td>{{ r.backlog_course }}</td><td>{{ r.plan_course }}</td>
+        <td><span class="tag bad">{{ r.clash }}</span></td><td>{{ r.day_or_date }}</td><td>{{ r.backlog_time }}</td></tr>
       {% endfor %}
     </table></div>
     {% else %}<p class="empty">ไม่มีวิชาค้างที่ชนกับวิชาตามแผนเทอมนี้</p>{% endif %}
@@ -64,25 +75,27 @@
 </div>
 
 {% if waits %}
-<section class="card" style="margin-top:16px">
-  <h2>คิวสำรองของฉัน</h2>
+<section class="card">
+  <h2>คิวสำรอง</h2>
   <div class="table-scroll"><table>
-    <tr><th>วิชา</th><th class="num">ลำดับคิว</th><th>สิทธิ์</th><th>ขอเมื่อ</th><th></th></tr>
+    <tr><th>วิชา</th><th class="num">ลำดับคิว</th><th>สิทธิ์</th><th>ขอเมื่อ</th><th>สถานะ</th><th></th></tr>
     {% for w in waits %}
     <tr><td>{{ w.course_code }} {{ w.name_th }} กลุ่ม {{ w.section_no }}</td><td class="num">{{ w.queue_no }}</td>
       <td>{{ {1:'1 วิชาค้าง', 2:'2 วิชาบังคับเทอมนี้', 3:'3 อื่นๆ'}[w.priority] }}</td><td>{{ w.requested_at[:16] }}</td>
-      <td><form method="post" action="{{ url_for('leave_waitlist', sid=s.student_id, section_id=w.section_id) }}">
-        <button class="btn">ออกจากคิว</button></form></td></tr>
+      <td>{% if not w.no_conflict %}<span class="tag bad">เวลาชน จะไม่ถูกเลื่อน</span>
+          {% elif not w.credits_ok %}<span class="tag bad">หน่วยกิตจะเกิน จะไม่ถูกเลื่อน</span>
+          {% else %}<span class="tag warn">รอที่ว่าง</span>{% endif %}</td>
+      <td>{{ action_btn('unwait', w.section_id, 'ออกจากคิว') }}</td></tr>
     {% endfor %}
   </table></div>
 </section>
 {% endif %}
 
-<section class="card" id="register" style="margin-top:16px">
+<section class="card" id="register">
   <h2>ลงทะเบียน / ถอน / เข้าคิว</h2>
-  <p class="sub">ทุกปุ่มส่ง INSERT หรือ DELETE ไปที่ฐานข้อมูลตรงๆ ถ้าผิดกฎ trigger จะปฏิเสธและแสดงเหตุผลด้านบน · "เหลือสำหรับฉัน" คิดทั้งที่นั่งรวมและโควตาหลักสูตร</p>
+  <p class="sub">ทุกปุ่มส่งคำสั่งไปที่ฐานข้อมูลตรงๆ ถ้าผิดกฎ trigger จะปฏิเสธและแสดงเหตุผลด้านบน · "เหลือ" คิดทั้งที่นั่งรวมและโควตาหลักสูตร</p>
   <div class="table-scroll"><table>
-    <tr><th>วิชา</th><th>กลุ่ม</th><th>เวลาเรียน</th><th>สอบ</th><th class="num">ลงแล้ว/รับ</th><th class="num">เหลือสำหรับฉัน</th><th>แผน</th><th></th></tr>
+    <tr><th>วิชา</th><th>กลุ่ม</th><th>เวลาเรียน</th><th>สอบ</th><th class="num">ลง/รับ</th><th class="num">เหลือ</th><th>แผน</th><th></th></tr>
     {% for r in sections %}
     <tr class="{{ 'mine' if r.is_enrolled }}">
       <td>{{ r.course_code }} {{ r.name_th }} <span class="empty">({{ r.credits }} นก.)</span></td>
@@ -94,23 +107,24 @@
       <td>{% if r.plan_term %}<span class="tag {{ 'info' if r.is_required else 'muted' }}">{{ r.plan_term }}{{ '' if r.is_required else ' เลือก' }}</span>{% endif %}</td>
       <td>
         {% if r.is_enrolled %}
-          <span class="tag ok">ลงแล้ว</span>
-          <form method="post" action="{{ url_for('drop', sid=s.student_id, section_id=r.section_id) }}"><button class="btn danger">ถอน</button></form>
+          <span class="tag ok">ลงแล้ว</span> {{ action_btn('drop', r.section_id, 'ถอน', 'btn danger') }}
         {% elif r.is_waiting %}
           <span class="tag warn">อยู่ในคิว</span>
         {% elif r.class_clash or r.exam_clash %}
           <span class="tag bad">{{ 'เรียนชน ' ~ r.class_clash if r.class_clash else 'สอบชน ' ~ r.exam_clash }}</span>
-          <form method="post" action="{{ url_for('enroll', sid=s.student_id, section_id=r.section_id) }}"><button class="btn" title="ลองลงเพื่อดูว่า trigger ปฏิเสธ">ลอง</button></form>
+          {{ action_btn('enroll', r.section_id, 'ลอง', title='ลองลงเพื่อดูว่า trigger ปฏิเสธ') }}
+        {% elif r.over_credit %}
+          <span class="tag bad">หน่วยกิตจะเกิน</span> {{ action_btn('enroll', r.section_id, 'ลอง') }}
         {% elif r.seats_left > 0 %}
-          <form method="post" action="{{ url_for('enroll', sid=s.student_id, section_id=r.section_id) }}"><button class="btn primary">ลงทะเบียน</button></form>
+          {{ action_btn('enroll', r.section_id, 'ลงทะเบียน', 'btn primary') }}
         {% else %}
-          <form method="post" action="{{ url_for('enroll', sid=s.student_id, section_id=r.section_id) }}"><button class="btn" title="ลองลงเพื่อดูว่า trigger ปฏิเสธด้วยเหตุผลอะไร">ลอง</button></form>
-          <form method="post" action="{{ url_for('join_waitlist', sid=s.student_id, section_id=r.section_id) }}"><button class="btn">เข้าคิว</button></form>
+          {{ action_btn('enroll', r.section_id, 'ลอง', title='ลองลงเพื่อดูว่า trigger ปฏิเสธด้วยเหตุผลอะไร') }}
+          {{ action_btn('waitlist', r.section_id, 'เข้าคิว') }}
         {% endif %}
       </td>
     </tr>
     {% endfor %}
   </table></div>
 </section>
-<p><a href="{{ url_for('log', sid=s.student_id) }}">ดูประวัติการทำรายการของ {{ s.student_id }}</a></p>
+{% if ep == 'admin' %}<p><a href="{{ url_for('admin.log', sid=s.student_id) }}">ประวัติการทำรายการของ {{ s.student_id }}</a></p>{% endif %}
 {% endblock %}

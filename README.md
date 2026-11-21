@@ -182,6 +182,7 @@ python -m unittest discover -s web -v
 | `csv/` | ข้อมูลตั้งต้นทั้ง 21 ตาราง ไฟล์ละตาราง (UTF-8 BOM เปิดใน Excel แล้วภาษาไทยไม่เพี้ยน) |
 | `web/` | หน้าเว็บ Flask: `app.py` (login, CSRF), `core.py` (ฐานข้อมูลและผู้ทำรายการ), `views_student.py`, `views_admin.py`, `views_scheduler.py`, `reports.py` (SQL), `templates/`, `test_app.py` |
 | `docs/PLAN.md` | แผนออกแบบระบบ 3 บทบาท |
+| `docs/SUMMARY.md` | สรุปงานล่าสุดและงานที่เหลือ |
 | `proposal_form.md` | คำตอบสำหรับฟอร์มเสนอหัวข้อ ข้อ 3–6 |
 | `Diagrams/` | ER diagram 21 ตาราง: `registration-er.drawio` (แก้ไขด้วย draw.io) และภาพ `registration-er.png` |
 | `archive/v2/` | ร่างส่วนขยายฝ่ายจัดตารางรุ่นก่อน (มีเวลาว่างอาจารย์และการล็อกวิชาส่วนกลาง) เก็บไว้อ้างอิง |

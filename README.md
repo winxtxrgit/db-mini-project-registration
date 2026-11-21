@@ -141,7 +141,7 @@ python web/app.py
 | `csv/` | ข้อมูลตั้งต้นทั้ง 18 ตาราง ไฟล์ละตาราง (UTF-8 BOM เปิดใน Excel แล้วภาษาไทยไม่เพี้ยน) |
 | `web/` | หน้าเว็บ Flask (`app.py`, SQL ของรายงานใน `reports.py`, `templates/`) |
 | `proposal_form.md` | คำตอบสำหรับฟอร์มเสนอหัวข้อ ข้อ 3–6 |
-| `Diagrams/` | ER diagram 18 ตาราง (`registration-er.drawio`, `.png`) และสคริปต์ `make_er.py` |
+| `Diagrams/` | ER diagram 18 ตาราง: `registration-er.drawio` (แก้ไขด้วย draw.io) และภาพ `registration-er.png` |
 | `archive/v2/` | ส่วนขยายฝ่ายจัดตาราง/จัดสอบ (v2) ที่ตัดออกจากขอบเขต เก็บไว้อ้างอิงเท่านั้น |
 
 ## ที่มาของข้อมูล

@@ -1,5 +1,5 @@
 """สร้าง registration-er-v2.drawio (Plan A รวมส่วนขยาย v2 = 20 ตาราง)
-รัน: python3 Diagrams/make_er.py Diagrams/registration-er-v2.drawio
+รัน (จากโฟลเดอร์ archive/v2): python Diagrams/make_er.py Diagrams/registration-er-v2.drawio
 """
 import sys
 from xml.sax.saxutils import escape

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}กลุ่มเรียนและคิว{% endblock %}
+{% block content %}
+<h1>กลุ่มเรียน โควตา และคิว · ภาคเรียน {{ term.term_id }}</h1>
+<p class="sub">เพิ่มจำนวนรับหรือโควตาแล้ว ระบบจะเลื่อนคนในคิวที่ลงได้ขึ้นมาให้ทันที · ลดต่ำกว่าคนที่ลงอยู่แล้วไม่ได้ (trigger กัน)</p>
+
+<section class="card">
+  <h2>เปิดกลุ่มเรียนใหม่</h2>
+  <form method="post" class="inline" action="{{ url_for('admin.section_new') }}">
+    {{ csrf_field() }}
+    <select name="course_code" required>
+      {% for c in courses %}<option value="{{ c.course_code }}">{{ c.course_code }} {{ c.name_th }}</option>{% endfor %}
+    </select>
+    กลุ่ม <input class="short" name="section_no" required placeholder="02">
+    รับ <input class="short" type="number" min="1" name="capacity" required> คน
+    <button class="btn primary">เปิดกลุ่ม</button>
+  </form>
+  <p class="empty">เปิดแล้วให้ผู้จัดตารางวางเวลาเรียน ห้อง และอาจารย์ต่อ</p>
+</section>
+
+<section class="card table-scroll">
+  <h2>กลุ่มเรียน</h2>
+  <table>
+    <tr><th>วิชา</th><th>กลุ่ม</th><th class="num">ลง/รับ</th><th>จำนวนรับ</th><th>โควตาตามหลักสูตร (ใช้/ให้)</th><th class="num">คิว</th><th></th></tr>
+    {% for s in sections %}
+    <tr>
+      <td>{{ s.course_code }} {{ s.name_th }}</td><td>{{ s.section_no }}</td>
+      <td class="num">{{ s.enrolled }}/{{ s.capacity }} {% if s.available <= 0 %}<span class="tag bad">เต็ม</span>{% endif %}</td>
+      <td><form method="post" class="inline" action="{{ url_for('admin.section_capacity', section_id=s.section_id) }}">
+        {{ csrf_field() }}<input class="short" type="number" min="1" name="capacity" value="{{ s.capacity }}"><button class="btn">ตั้ง</button></form></td>
+      <td>{{ s.quotas or 'ไม่จำกัดหลักสูตร' }}
+        <form method="post" class="inline" action="{{ url_for('admin.section_quota', section_id=s.section_id) }}">
+          {{ csrf_field() }}
+          <select name="curriculum_id">{% for c in curricula %}<option>{{ c.curriculum_id }}</option>{% endfor %}</select>
+          <input class="short" type="number" min="0" name="seats" placeholder="ว่าง=ลบ">
+          <button class="btn">ตั้งโควตา</button>
+        </form></td>
+      <td class="num">{{ s.waiting }}</td>
+      <td>{% if s.can_promote %}
+        <form method="post" class="inline" action="{{ url_for('admin.section_promote', section_id=s.section_id) }}">
+          {{ csrf_field() }}<button class="btn primary">เลื่อนคิว</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section class="card">
+  <h2>คิวสำรอง</h2>
+  {% include "admin/_queue.html" %}
+</section>
+{% endblock %}

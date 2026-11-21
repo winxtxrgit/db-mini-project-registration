@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}ห้อง{% endblock %}
+{% block content %}
+<h1>R8 การใช้ห้องเรียนในภาคปัจจุบัน</h1>
+<p class="sub">ความจุห้องใช้ตรวจห้องสอบ (เว้นว่าง = ไม่ทราบ ระบบจะไม่ตรวจความจุ)</p>
+{% if g.user.role == 'scheduler' %}
+<section class="card">
+  <h2>เพิ่มห้อง / แก้ความจุ</h2>
+  <form method="post" class="inline" action="{{ url_for('scheduler.room_save') }}">
+    {{ csrf_field() }}<input name="room_code" required placeholder="รหัสห้อง">
+    ความจุ <input class="short" type="number" min="1" name="capacity"> คน <button class="btn primary">บันทึก</button>
+  </form>
+</section>
+{% endif %}
+<div class="grid">
+{% for r in rooms %}
+  <section class="card">
+    <h2>{{ r.room_code }} <span class="empty">{{ ('จุ ' ~ r.capacity ~ ' คน') if r.capacity else 'ไม่ทราบความจุ' }}</span></h2>
+    {% if usage[r.room_code] %}
+    <table>{% for u in usage[r.room_code] %}
+      <tr><td>{{ u.day }}</td><td>{{ u.time }}</td><td>{{ u.course_code }} กลุ่ม {{ u.section_no }}</td></tr>{% endfor %}
+    </table>
+    {% else %}<p class="empty">ว่างทั้งสัปดาห์</p>{% endif %}
+  </section>
+{% endfor %}
+</div>
+{% endblock %}

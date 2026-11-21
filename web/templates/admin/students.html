@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}นักศึกษา{% endblock %}
+{% block content %}
+<h1>นักศึกษา</h1>
+<div class="card">
+  <form>
+    <input name="q" value="{{ q }}" placeholder="รหัส ชื่อ หรือรหัสหลักสูตร">
+    <button class="btn primary">ค้นหา</button>
+    <a href="{{ url_for('admin.credits') }}">R7 หน่วยกิตเทียบเพดาน</a>
+  </form>
+</div>
+
+<div class="card table-scroll">
+  <table>
+    <tr><th>รหัส</th><th>ชื่อ</th><th>หลักสูตร</th><th class="num">ปีเข้า</th><th class="num">หน่วยกิตเทอมนี้</th><th>บัญชีผู้ใช้</th></tr>
+    {% for s in students %}
+    <tr><td><a href="{{ url_for('admin.student_view', sid=s.student_id) }}">{{ s.student_id }}</a></td>
+      <td>{{ s.first_name }} {{ s.last_name }}</td><td>{{ s.curriculum_id }}</td><td class="num">{{ s.entry_year }}</td>
+      <td class="num">{{ s.credits }}</td>
+      <td>{% if s.username %}<span class="tag {{ 'ok' if s.is_active else 'muted' }}">{{ s.username }}{{ '' if s.is_active else ' (ปิด)' }}</span>
+          {% else %}<span class="empty">ยังไม่มี</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="6" class="empty">ไม่พบ</td></tr>{% endfor %}
+  </table>
+  <p class="empty">แสดงไม่เกิน 200 คน · นักศึกษาจำลองหลักสูตร EXT (F0001…) อยู่ท้ายรายการ</p>
+</div>
+
+<section class="card">
+  <h2>เพิ่มนักศึกษา</h2>
+  <form method="post" class="inline" action="{{ url_for('admin.student_new') }}">
+    {{ csrf_field() }}
+    <input name="student_id" required placeholder="รหัสนักศึกษา">
+    <input name="first_name" required placeholder="ชื่อ">
+    <input name="last_name" required placeholder="นามสกุล">
+    <select name="curriculum_id">{% for c in curricula %}<option>{{ c.curriculum_id }}</option>{% endfor %}</select>
+    ปีเข้า <input class="short" type="number" name="entry_year" required placeholder="2569">
+    <input type="password" name="password" placeholder="รหัสผ่าน (ไม่ใส่ = ยังไม่สร้างบัญชี)" autocomplete="new-password">
+    <button class="btn primary">เพิ่ม</button>
+  </form>
+</section>
+{% endblock %}

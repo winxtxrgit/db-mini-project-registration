@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}ฝ่ายทะเบียน · ภาพรวม{% endblock %}
+{% block content %}
+<h1>ภาพรวมการลงทะเบียน</h1>
+<p class="sub">ภาคเรียน {{ term.term_id }} ·
+  {% if term.reg_is_open %}<span class="tag ok">เปิดลงทะเบียน {{ term.reg_open_at }} ถึง {{ term.reg_close_at }}</span>
+  {% else %}<span class="tag bad">ปิดลงทะเบียน</span>{% endif %}
+  · เพดาน {{ term.max_credits }} หน่วยกิต · <a href="{{ url_for('admin.terms') }}">แก้ไข</a></p>
+
+<section class="card">
+  <h2>R4 ความต้องการที่นั่งวิชาบังคับ เทียบกับที่เปิด</h2>
+  <p class="sub">จำนวนนักศึกษาที่วิชานี้ถึงกำหนดตามแผนแล้วแต่ยังไม่ผ่าน</p>
+  <div class="table-scroll"><table>
+    <tr><th>วิชา</th><th class="num">ต้องเรียน</th><th class="num">กลุ่มที่เปิด</th><th class="num">ที่นั่ง</th><th class="num">ว่าง</th><th></th></tr>
+    {% for r in demand %}
+    <tr><td>{{ r.course_code }} {{ r.name_th }}</td><td class="num">{{ r.students_need }}</td>
+      <td class="num">{{ r.sections }}</td><td class="num">{{ r.seats }}</td><td class="num">{{ r.available }}</td>
+      <td>{% if r.alert %}<span class="tag bad">{{ r.alert }}</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+
+<section class="card">
+  <h2>R5 ที่นั่งถูกล็อกด้วยโควตาหลักสูตร</h2>
+  <p class="sub">โควตาของหลักสูตรหนึ่งเต็มแล้ว ทั้งที่กลุ่มเรียนยังมีที่ว่าง → ปรับโควตาได้ที่หน้า <a href="{{ url_for('admin.sections') }}">กลุ่มเรียนและคิว</a></p>
+  {% if locked %}
+  <div class="table-scroll"><table>
+    <tr><th>วิชา</th><th>กลุ่ม</th><th>หลักสูตร</th><th class="num">ใช้โควตา</th><th class="num">ทั้งกลุ่ม</th><th class="num">ยังว่าง</th></tr>
+    {% for r in locked %}
+    <tr><td>{{ r.course_code }} {{ r.name_th }}</td><td>{{ r.sec }}</td><td>{{ r.curriculum_id }}</td>
+      <td class="num"><span class="tag bad">{{ r.used }}/{{ r.seats }}</span></td>
+      <td class="num">{{ r.enrolled }}/{{ r.capacity }}</td><td class="num">{{ r.section_free }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="empty">ไม่มี</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>คิวสำรอง</h2>
+  {% include "admin/_queue.html" %}
+</section>
+
+<form method="post" action="{{ url_for('admin.reset') }}">{{ csrf_field() }}
+  <button class="btn danger" title="ลบทุกอย่างที่ทดลองทำ แล้วโหลด seed.sql ใหม่">รีเซ็ตข้อมูลสาธิต</button></form>
+{% endblock %}

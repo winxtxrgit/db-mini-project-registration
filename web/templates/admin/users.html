@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}บัญชีผู้ใช้{% endblock %}
+{% block content %}
+<h1>บัญชีผู้ใช้</h1>
+<p class="sub">รหัสผ่านเก็บเป็น hash · ต้องยาวอย่างน้อย 8 ตัวอักษร · ปิดบัญชีแล้ว login ไม่ได้ แต่ประวัติยังอยู่</p>
+
+<section class="card">
+  <h2>สร้างบัญชี</h2>
+  <form method="post" class="inline" action="{{ url_for('admin.user_new') }}">
+    {{ csrf_field() }}
+    <input name="username" required placeholder="ชื่อผู้ใช้">
+    <select name="role">
+      <option value="student">นักศึกษา</option><option value="scheduler">ผู้จัดตาราง</option><option value="admin">ฝ่ายทะเบียน</option>
+    </select>
+    <input name="student_id" placeholder="รหัสนักศึกษา (ถ้าเป็นนักศึกษา)">
+    <select name="instructor_id"><option value="">อาจารย์ (ถ้าเป็นผู้จัดตาราง)</option>
+      {% for i in instructors %}<option value="{{ i.instructor_id }}">{{ i.full_name }}</option>{% endfor %}</select>
+    <input type="password" name="password" required minlength="8" placeholder="รหัสผ่าน" autocomplete="new-password">
+    <button class="btn primary">สร้าง</button>
+  </form>
+</section>
+
+<div class="card">
+  <form><input name="q" value="{{ q }}" placeholder="ชื่อผู้ใช้ หรือ student/admin/scheduler"> <button class="btn primary">ค้นหา</button></form>
+</div>
+
+<div class="card table-scroll">
+  <table>
+    <tr><th>ชื่อผู้ใช้</th><th>บทบาท</th><th>ผูกกับ</th><th>สถานะ</th><th>ตั้งรหัสผ่านใหม่</th><th></th></tr>
+    {% for u in users %}
+    <tr><td>{{ u.username }}</td><td>{{ ROLE_NAME[u.role] }}</td>
+      <td>{{ u.student_id or u.instructor_name or '-' }}</td>
+      <td>{% if u.is_active %}<span class="tag ok">ใช้งาน</span>{% else %}<span class="tag muted">ปิด</span>{% endif %}</td>
+      <td><form method="post" class="inline" action="{{ url_for('admin.user_password', user_id=u.user_id) }}">
+        {{ csrf_field() }}<input type="password" name="password" minlength="8" required placeholder="รหัสใหม่" autocomplete="new-password"><button class="btn">ตั้ง</button></form></td>
+      <td>{% if u.user_id != g.user.user_id %}
+        <form method="post" class="inline" action="{{ url_for('admin.user_toggle', user_id=u.user_id) }}">
+          {{ csrf_field() }}<button class="btn {{ 'danger' if u.is_active }}">{{ 'ปิดบัญชี' if u.is_active else 'เปิดบัญชี' }}</button></form>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

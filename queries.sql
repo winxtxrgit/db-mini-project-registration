@@ -54,6 +54,8 @@ SELECT t.course_code, c.name_th, s.section_no AS sec,
          WHEN cc.with_course IS NOT NULL           THEN 'เวลาเรียนชนกับ ' || cc.with_course
          WHEN ce.with_course IS NOT NULL           THEN 'เวลาสอบชนกับ ' || ce.with_course
          WHEN sf.seats_left <= 0                   THEN 'ที่นั่ง/โควตาเต็ม'
+         WHEN COALESCE(cr.credits, 0) + c.credits > tm.max_credits
+                                                   THEN 'หน่วยกิตจะเกินเพดาน ' || tm.max_credits
          ELSE 'ลงได้ (เหลือ ' || sf.seats_left || ' ที่)'
        END AS result
 FROM todo t
@@ -62,6 +64,8 @@ LEFT JOIN section s ON s.course_code = t.course_code AND s.term_id = t.term_id
 LEFT JOIN clash cc ON cc.section_id = s.section_id AND cc.student_id = t.student_id AND cc.kind = 'CLASS'
 LEFT JOIN clash ce ON ce.section_id = s.section_id AND ce.student_id = t.student_id AND ce.kind = 'EXAM'
 LEFT JOIN v_seat_for_student sf ON sf.section_id = s.section_id AND sf.student_id = t.student_id
+JOIN term tm ON tm.term_id = t.term_id
+LEFT JOIN v_student_credits cr ON cr.student_id = t.student_id AND cr.term_id = t.term_id
 ORDER BY t.course_code;
 
 .print ''
@@ -139,3 +143,36 @@ JOIN v_section_slot c ON c.section_id = ns.section_id AND c.kind = a.kind AND c.
                      AND a.start_time < c.end_time AND c.start_time < a.end_time
 WHERE b.due = 'BACKLOG'
 ORDER BY b.course_code, n.course_code, a.kind;
+
+.print ''
+.print '=== R7 หน่วยกิตที่ลงในภาคปัจจุบัน เทียบเพดาน (สำหรับฝ่ายทะเบียน, เฉพาะนักศึกษาที่มีบัญชีผู้ใช้) ==='
+SELECT u.student_id, s.curriculum_id, COALESCE(cr.courses, 0) AS courses, COALESCE(cr.credits, 0) AS credits,
+       t.max_credits,
+       CASE WHEN COALESCE(cr.credits, 0) = 0 THEN 'ยังไม่ลงทะเบียน'
+            WHEN cr.credits >= t.max_credits THEN 'เต็มเพดาน' ELSE '' END AS note
+FROM app_user u
+JOIN student s ON s.student_id = u.student_id
+JOIN term t ON t.is_current = 1
+LEFT JOIN v_student_credits cr ON cr.student_id = u.student_id AND cr.term_id = t.term_id
+ORDER BY u.student_id;
+
+.print ''
+.print '=== R8 การใช้ห้องเรียนในภาคปัจจุบัน (สำหรับผู้จัดตาราง) ==='
+SELECT u.room_code,
+       CASE u.day_of_week WHEN 1 THEN 'จันทร์' WHEN 2 THEN 'อังคาร' WHEN 3 THEN 'พุธ' WHEN 4 THEN 'พฤหัสบดี'
+                          WHEN 5 THEN 'ศุกร์' WHEN 6 THEN 'เสาร์' ELSE 'อาทิตย์' END AS day,
+       u.start_time || '-' || u.end_time AS time, u.course_code, u.section_no
+FROM v_room_usage u JOIN term t ON t.term_id = u.term_id AND t.is_current = 1
+ORDER BY u.room_code, u.day_of_week, u.start_time;
+
+.print ''
+.print '=== R9 ภาระสอนของอาจารย์ในภาคปัจจุบัน (ชั่วโมงต่อสัปดาห์) ==='
+SELECT i.full_name, COUNT(DISTINCT b.section_id) AS sections,
+       COALESCE(SUM((CAST(substr(b.end_time, 1, 2) AS INTEGER) * 60 + CAST(substr(b.end_time, 4, 2) AS INTEGER)
+                   - CAST(substr(b.start_time, 1, 2) AS INTEGER) * 60 - CAST(substr(b.start_time, 4, 2) AS INTEGER)) / 60.0), 0)
+         AS hours_per_week
+FROM instructor i
+LEFT JOIN v_instructor_busy b ON b.instructor_id = i.instructor_id
+     AND b.term_id = (SELECT term_id FROM term WHERE is_current = 1)
+GROUP BY i.instructor_id
+ORDER BY hours_per_week DESC, i.full_name;

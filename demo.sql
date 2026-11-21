@@ -12,10 +12,11 @@ INSERT INTO enrollment (student_id, section_id) VALUES ('6799000001', 10);
 INSERT INTO enrollment (student_id, section_id) VALUES ('6799000001', 6);
 
 .print ''
-.print '--- D3 เวลาสอบชน (ข้อมูลสมมุติ): ถ้า 310-3313 ประกาศสอบ 9 มี.ค. 09:00-12:00 ตรงกับฐานข้อมูล แล้ว 6799000003 ขอลง: ควรผิด'
-INSERT INTO exam (section_id, exam_type, exam_date, start_time, end_time) VALUES (7, 'FINAL', '2027-03-09', '09:00', '12:00');
-INSERT INTO enrollment (student_id, section_id) VALUES ('6799000003', 7);
-DELETE FROM exam WHERE section_id = 7;   -- ลบวันสอบสมมุติออก เพราะ reg ยังไม่ประกาศวันสอบของวิชานี้
+.print '--- D3 เวลาสอบชน: เปิดกลุ่มสาธิต 02 ของ 310-3313 (ศ. 13:00-16:00) สอบ 9 มี.ค. 09:00-12:00 ตรงกับ 310-2309 แล้ว 6799000003 ขอลง: ควรผิด'
+INSERT INTO section (section_id, course_code, term_id, section_no, capacity) VALUES (11, '310-3313', '2569-2', '02', 10);
+INSERT INTO class_meeting (section_id, day_of_week, start_time, end_time, room_code) VALUES (11, 5, '13:00', '16:00', '15303');
+INSERT INTO exam (section_id, exam_type, exam_date, start_time, end_time) VALUES (11, 'FINAL', '2027-03-09', '09:00', '12:00');
+INSERT INTO enrollment (student_id, section_id) VALUES ('6799000003', 11);
 
 .print ''
 .print '--- D4 6799000005 ลง 312-3302 ปัญญาประดิษฐ์: ควรผ่าน และตารางสอบเตือนว่า 9 มี.ค. ต้องสอบ 2 วิชา (เวลาไม่ชน)'
@@ -59,3 +60,63 @@ DELETE FROM enrollment WHERE student_id = 'F0001' AND section_id = 1;
 SELECT student_id, priority FROM v_waitlist_rank WHERE section_id = 1;
 SELECT log_id, student_id, section_id, action FROM registration_log
 WHERE section_id = 1 AND log_id > (SELECT MAX(log_id) - 3 FROM registration_log);
+
+------------------------------------------------------------------
+-- ส่วนที่เพิ่มในรอบออกแบบ 3 บทบาท
+-- app_session = ผู้ทำรายการ (แอปใส่ให้อัตโนมัติ ในไฟล์นี้ใส่เองเพื่อจำลอง)
+------------------------------------------------------------------
+.print ''
+.print '--- D11 ช่วงลงทะเบียนปิดแล้ว: นักศึกษา 6799000005 ถอน 310-2308 เอง: ควรผิด / ฝ่ายทะเบียนถอนแทน: ผ่าน'
+UPDATE term SET reg_close_at = '2026-11-01 00:00' WHERE term_id = '2569-2';
+INSERT INTO app_session VALUES (1, (SELECT user_id FROM app_user WHERE username = '6799000005'));
+DELETE FROM enrollment WHERE student_id = '6799000005' AND section_id = 2;
+UPDATE app_session SET user_id = (SELECT user_id FROM app_user WHERE username = 'admin');
+DELETE FROM enrollment WHERE student_id = '6799000005' AND section_id = 2;
+DELETE FROM app_session;
+UPDATE term SET reg_close_at = '2027-01-15 23:59' WHERE term_id = '2569-2';
+SELECT l.log_id, l.student_id, l.section_id, l.action, u.username AS actor
+FROM registration_log l LEFT JOIN app_user u ON u.user_id = l.actor_user_id
+WHERE l.log_id = (SELECT MAX(log_id) FROM registration_log);
+
+.print ''
+.print '--- D12 หน่วยกิตเกินเพดาน: ลดเพดานเหลือ 8 แล้ว 6799000005 (ลงอยู่ 6 หน่วยกิต) ลง 310-2311 อีก 3: ควรผิด'
+UPDATE term SET max_credits = 8 WHERE term_id = '2569-2';
+INSERT INTO enrollment (student_id, section_id) VALUES ('6799000005', 4);
+UPDATE term SET max_credits = 22 WHERE term_id = '2569-2';
+
+.print ''
+.print '--- D13 ผู้จัดตารางวางคาบ 310-2308 ที่ห้อง 15208 วันพุธ 09:00-10:00 ซึ่ง 310-2205 ใช้อยู่: ควรผิด'
+INSERT INTO app_session VALUES (1, (SELECT user_id FROM app_user WHERE username = 'scheduler'));
+INSERT INTO class_meeting (section_id, day_of_week, start_time, end_time, room_code) VALUES (2, 3, '09:00', '10:00', '15208');
+
+.print ''
+.print '--- D14 มอบหมายอาจารย์ที่สอน 310-2205 (พ. 09:00-12:00) ให้สอน 310-3419 ซึ่งเวลาเดียวกันด้วย: ควรผิด'
+INSERT INTO section_instructor VALUES (10, 1);
+
+.print ''
+.print '--- D15 ย้าย 312-3302 จาก จ. 09:00-12:00 ไป อ. 13:00-16:00 ซึ่งนักศึกษาบางคนเรียน 310-2308 อยู่: ควรผิด'
+UPDATE class_meeting SET day_of_week = 2, start_time = '13:00', end_time = '16:00' WHERE section_id = 6;
+
+.print ''
+.print '--- D16 ใช้ห้องสอบที่จุ 10 คนให้ 310-3419 ซึ่งมีคนลง 16 คน: ควรผิด / ย้ายเวลาสอบไปวันที่ว่าง: ผ่านและมีประวัติ'
+INSERT INTO room (room_code, capacity) VALUES ('R-SMALL', 10);
+UPDATE exam SET room_code = 'R-SMALL' WHERE section_id = 10;
+UPDATE exam SET exam_date = '2027-03-10' WHERE section_id = 10;
+DELETE FROM app_session;
+SELECT l.log_id, l.section_id, l.entity, l.action, l.detail, u.username AS actor
+FROM schedule_log l LEFT JOIN app_user u ON u.user_id = l.actor_user_id
+ORDER BY l.log_id DESC LIMIT 1;
+
+.print ''
+.print '--- D17 ลดจำนวนรับ 310-3419 เหลือ 10 ทั้งที่ลงแล้ว 16 คน: ควรผิด'
+UPDATE section SET capacity = 10 WHERE section_id = 10;
+
+.print ''
+.print '--- D18 คิวที่ลงไม่ได้ต้องไม่ทำให้ถอนพัง: F0290 อยู่คิวแรกแต่หน่วยกิตจะเกิน จึงข้ามไปเลื่อน F0291'
+INSERT INTO enrollment (student_id, section_id) VALUES ('F0290', 10), ('F0290', 8);
+INSERT INTO waitlist (student_id, section_id) VALUES ('F0291', 1);
+UPDATE term SET max_credits = 6 WHERE term_id = '2569-2';
+SELECT student_id, priority, requested_at, credits_ok FROM v_waitlist_rank WHERE section_id = 1 ORDER BY priority, requested_at;
+DELETE FROM enrollment WHERE student_id = 'F0002' AND section_id = 1;
+UPDATE term SET max_credits = 22 WHERE term_id = '2569-2';
+SELECT student_id, action FROM registration_log WHERE section_id = 1 ORDER BY log_id DESC LIMIT 2;

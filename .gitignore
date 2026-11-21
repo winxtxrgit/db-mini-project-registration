@@ -11,3 +11,6 @@ web/registration.db
 
 # ไฟล์ล็อกของ Excel ตอนเปิดไฟล์
 ~$*.xlsx
+
+# secret key ของ Flask (สร้างอัตโนมัติ)
+web/.secret_key

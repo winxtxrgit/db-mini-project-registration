@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}หน่วยกิตเทียบเพดาน{% endblock %}
+{% block content %}
+<h1>R7 หน่วยกิตที่ลงในภาคปัจจุบัน เทียบเพดาน</h1>
+<div class="card"><form><input name="q" value="{{ q }}" placeholder="รหัส ชื่อ หรือรหัสหลักสูตร"> <button class="btn primary">ค้นหา</button></form></div>
+<div class="card table-scroll">
+  <table>
+    <tr><th>รหัส</th><th>ชื่อ</th><th>หลักสูตร</th><th class="num">วิชา</th><th class="num">หน่วยกิต</th><th class="num">เพดาน</th><th></th></tr>
+    {% for r in rows_ %}
+    <tr><td><a href="{{ url_for('admin.student_view', sid=r.student_id) }}">{{ r.student_id }}</a></td><td>{{ r.name }}</td>
+      <td>{{ r.curriculum_id }}</td><td class="num">{{ r.courses }}</td><td class="num">{{ r.credits }}</td><td class="num">{{ r.max_credits }}</td>
+      <td>{% if r.credits == 0 %}<span class="tag muted">ยังไม่ลง</span>{% elif r.credits >= r.max_credits %}<span class="tag warn">เต็มเพดาน</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

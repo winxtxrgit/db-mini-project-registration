@@ -98,6 +98,9 @@
           <form method="post" action="{{ url_for('drop', sid=s.student_id, section_id=r.section_id) }}"><button class="btn danger">ถอน</button></form>
         {% elif r.is_waiting %}
           <span class="tag warn">อยู่ในคิว</span>
+        {% elif r.class_clash or r.exam_clash %}
+          <span class="tag bad">{{ 'เรียนชน ' ~ r.class_clash if r.class_clash else 'สอบชน ' ~ r.exam_clash }}</span>
+          <form method="post" action="{{ url_for('enroll', sid=s.student_id, section_id=r.section_id) }}"><button class="btn" title="ลองลงเพื่อดูว่า trigger ปฏิเสธ">ลอง</button></form>
         {% elif r.seats_left > 0 %}
           <form method="post" action="{{ url_for('enroll', sid=s.student_id, section_id=r.section_id) }}"><button class="btn primary">ลงทะเบียน</button></form>
         {% else %}

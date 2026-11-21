@@ -171,7 +171,18 @@ SELECT s.section_id, s.course_code, c.name_th, c.credits, s.section_no,
        ss.enrolled, ss.capacity, sf.seats_left,
        sp.year_level || '/' || sp.semester AS plan_term, sp.is_required,
        EXISTS (SELECT 1 FROM enrollment e WHERE e.student_id = :sid AND e.section_id = s.section_id) AS is_enrolled,
-       EXISTS (SELECT 1 FROM waitlist w WHERE w.student_id = :sid AND w.section_id = s.section_id) AS is_waiting
+       EXISTS (SELECT 1 FROM waitlist w WHERE w.student_id = :sid AND w.section_id = s.section_id) AS is_waiting,
+       -- วิชาที่ลงไว้แล้วซึ่งเวลาเรียน/เวลาสอบทับกับ section นี้ (เงื่อนไขเดียวกับ trg_enrollment_rules)
+       (SELECT group_concat(DISTINCT m.course_code) FROM v_section_slot c
+          JOIN v_student_slot m ON m.student_id = :sid AND m.term_id = s.term_id
+           AND m.kind = c.kind AND m.slot_key = c.slot_key
+           AND m.start_time < c.end_time AND c.start_time < m.end_time
+         WHERE c.section_id = s.section_id AND c.kind = 'CLASS' AND m.section_id <> s.section_id) AS class_clash,
+       (SELECT group_concat(DISTINCT m.course_code) FROM v_section_slot c
+          JOIN v_student_slot m ON m.student_id = :sid AND m.term_id = s.term_id
+           AND m.kind = c.kind AND m.slot_key = c.slot_key
+           AND m.start_time < c.end_time AND c.start_time < m.end_time
+         WHERE c.section_id = s.section_id AND c.kind = 'EXAM' AND m.section_id <> s.section_id) AS exam_clash
 FROM section s
 JOIN me ON me.term_id = s.term_id
 JOIN course c ON c.course_code = s.course_code
@@ -185,7 +196,8 @@ ORDER BY (sp.course_code IS NULL), s.course_code, s.section_no
 
 WAITLIST_RANK = """
 SELECT w.section_id, w.course_code, c.name_th, s.section_no, w.student_id,
-       st.first_name || ' ' || st.last_name AS student_name, w.priority, w.requested_at,
+       st.first_name || ' ' || st.last_name AS student_name, w.priority,
+       datetime(w.requested_at, 'localtime') AS requested_at,
        w.no_conflict, w.seats_left,
        ROW_NUMBER() OVER (PARTITION BY w.section_id ORDER BY w.priority, w.requested_at) AS queue_no
 FROM v_waitlist_rank w
@@ -205,7 +217,7 @@ ORDER BY ss.course_code, ss.section_no
 """
 
 LOG = """
-SELECT l.log_id, l.logged_at, l.student_id, st.first_name || ' ' || st.last_name AS student_name,
+SELECT l.log_id, datetime(l.logged_at, 'localtime') AS logged_at, l.student_id, st.first_name || ' ' || st.last_name AS student_name,
        s.course_code, c.name_th, s.section_no, l.action
 FROM registration_log l
 JOIN student st ON st.student_id = l.student_id

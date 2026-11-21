@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}ฝ่ายทะเบียน · ระบบลงทะเบียน{% endblock %}
+{% block content %}
+<h1>ฝ่ายทะเบียน</h1>
+<p class="sub">ความต้องการที่นั่ง ที่นั่งที่ถูกล็อกด้วยโควตา และคิวสำรองของภาคเรียนปัจจุบัน</p>
+
+<section class="card">
+  <h2>R4 ความต้องการที่นั่งวิชาบังคับ เทียบกับที่เปิด</h2>
+  <p class="sub">จำนวนนักศึกษาที่วิชานี้ถึงกำหนดตามแผนแล้วแต่ยังไม่ผ่าน</p>
+  <div class="table-scroll"><table>
+    <tr><th>วิชา</th><th class="num">ต้องเรียน</th><th class="num">กลุ่มที่เปิด</th><th class="num">ที่นั่ง</th><th class="num">ว่าง</th><th></th></tr>
+    {% for r in demand %}
+    <tr><td>{{ r.course_code }} {{ r.name_th }}</td><td class="num">{{ r.students_need }}</td>
+      <td class="num">{{ r.sections }}</td><td class="num">{{ r.seats }}</td><td class="num">{{ r.available }}</td>
+      <td>{% if r.alert %}<span class="tag bad">{{ r.alert }}</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+
+<section class="card">
+  <h2>R5 ที่นั่งถูกล็อกด้วยโควตาหลักสูตร</h2>
+  <p class="sub">โควตาของหลักสูตรหนึ่งเต็มแล้ว ทั้งที่กลุ่มเรียนยังมีที่ว่าง</p>
+  {% if locked %}
+  <div class="table-scroll"><table>
+    <tr><th>วิชา</th><th>กลุ่ม</th><th>หลักสูตร</th><th class="num">ใช้โควตา</th><th class="num">ทั้งกลุ่ม</th><th class="num">ยังว่าง</th></tr>
+    {% for r in locked %}
+    <tr><td>{{ r.course_code }} {{ r.name_th }}</td><td>{{ r.sec }}</td><td>{{ r.curriculum_id }}</td>
+      <td class="num"><span class="tag bad">{{ r.used }}/{{ r.seats }}</span></td>
+      <td class="num">{{ r.enrolled }}/{{ r.capacity }}</td><td class="num">{{ r.section_free }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="empty">ไม่มี</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>คิวสำรอง</h2>
+  <p class="sub">เรียงตามสิทธิ์ (1 วิชาค้าง → 2 วิชาบังคับเทอมนี้ → 3 อื่นๆ) แล้วตามเวลาที่ขอ · เมื่อมีคนถอน ระบบเลื่อนคนแรกที่ "ไม่ชน" และ "มีโควตา" ขึ้นมาเอง</p>
+  {% if queue %}
+  <div class="table-scroll"><table>
+    <tr><th>วิชา</th><th class="num">ลำดับ</th><th>นักศึกษา</th><th>สิทธิ์</th><th>ขอเมื่อ</th><th>เลื่อนได้?</th></tr>
+    {% for r in queue %}
+    <tr><td>{{ r.course_code }} {{ r.name_th }} กลุ่ม {{ r.section_no }}</td><td class="num">{{ r.queue_no }}</td>
+      <td><a href="{{ url_for('student', sid=r.student_id) }}">{{ r.student_id }}</a> {{ r.student_name }}</td>
+      <td>{{ r.priority }}</td><td>{{ r.requested_at[:16] }}</td>
+      <td>{% if not r.no_conflict %}<span class="tag bad">เวลาชน</span>{% elif r.seats_left <= 0 %}<span class="tag warn">รอที่ว่าง</span>{% else %}<span class="tag ok">ได้</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="empty">ยังไม่มีใครอยู่ในคิว (ลองให้นักศึกษากด "เข้าคิว" ในวิชาที่เต็ม)</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>ที่นั่งรายกลุ่มเรียน</h2>
+  <div class="table-scroll"><table>
+    <tr><th>วิชา</th><th>กลุ่ม</th><th class="num">ลงแล้ว</th><th class="num">รับ</th><th class="num">ว่าง</th><th class="num">ในคิว</th></tr>
+    {% for r in seats %}
+    <tr><td>{{ r.course_code }} {{ r.name_th }}</td><td>{{ r.section_no }}</td><td class="num">{{ r.enrolled }}</td>
+      <td class="num">{{ r.capacity }}</td>
+      <td class="num">{% if r.available <= 0 %}<span class="tag bad">เต็ม</span>{% else %}{{ r.available }}{% endif %}</td>
+      <td class="num">{{ r.waiting }}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endblock %}

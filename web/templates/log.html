@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}ประวัติการทำรายการ · ระบบลงทะเบียน{% endblock %}
+{% block content %}
+<h1>ประวัติการทำรายการ</h1>
+<p class="sub">ตาราง registration_log บันทึกโดย trigger เท่านั้น (ADD ลง · DROP ถอน · WAITLIST เข้าคิว · PROMOTE เลื่อนจากคิว) แสดงล่าสุด 300 รายการ</p>
+
+<div class="card">
+  <form>
+    <label>รหัสนักศึกษา <input name="sid" value="{{ sid }}" placeholder="ทั้งหมด"></label>
+    <label>รายการ
+      <select name="action">
+        <option value="">ทั้งหมด</option>
+        {% for a in ['ADD','DROP','WAITLIST','PROMOTE'] %}<option {{ 'selected' if a == action }}>{{ a }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn primary">กรอง</button>
+  </form>
+</div>
+
+<div class="card table-scroll">
+  {% if logs %}
+  <table>
+    <tr><th class="num">#</th><th>เวลา</th><th>นักศึกษา</th><th>วิชา</th><th>รายการ</th></tr>
+    {% for r in logs %}
+    <tr><td class="num">{{ r.log_id }}</td><td>{{ r.logged_at[:19] }}</td>
+      <td><a href="{{ url_for('student', sid=r.student_id) }}">{{ r.student_id }}</a> {{ r.student_name }}</td>
+      <td>{{ r.course_code }} {{ r.name_th }} กลุ่ม {{ r.section_no }}</td>
+      <td><span class="tag {{ {'ADD':'ok','DROP':'bad','WAITLIST':'warn','PROMOTE':'info'}[r.action] }}">{{ r.action }}</span></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="empty">ไม่มีรายการ</p>{% endif %}
+</div>
+{% endblock %}

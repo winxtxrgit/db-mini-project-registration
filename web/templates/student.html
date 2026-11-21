@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ s.student_id }} · ระบบลงทะเบียน{% endblock %}
+{% block content %}
+<h1>{{ s.student_id }} {{ s.first_name }} {{ s.last_name }}</h1>
+<p class="sub">{{ s.program_name }} · หลักสูตร {{ s.curriculum_id }} · ชั้นปี {{ s.year_level }} ภาค {{ s.semester }} (ภาคเรียน {{ s.term_id }})</p>
+
+<div class="grid">
+  <section class="card">
+    <h2>R1 แผนการเรียน เทียบกับที่ลงจริง</h2>
+    <p class="sub">วิชาบังคับที่ถึงกำหนดแล้วตามแผน และยังไม่ผ่าน</p>
+    {% if plan %}
+    <div class="table-scroll"><table>
+      <tr><th>วิชา</th><th>แผน ปี/ภาค</th><th>สถานะ</th></tr>
+      {% for r in plan %}
+      <tr><td>{{ r.course_code }} {{ r.name_th }}</td><td>{{ r.plan_term }}</td>
+        <td>{% if r.status.startswith('ลงแล้ว') %}<span class="tag ok">{{ r.status }}</span>
+            {% elif r.status.startswith('ค้าง') %}<span class="tag bad">{{ r.status }}</span>
+            {% else %}<span class="tag warn">{{ r.status }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<p class="empty">ไม่มีวิชาบังคับค้าง หรือไม่มีแผนการเรียนของหลักสูตรนี้ในระบบ</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>R2 วิชาบังคับที่ยังไม่ได้ลง: ลงได้หรือไม่ เพราะอะไร</h2>
+    {% if why %}
+    <div class="table-scroll"><table>
+      <tr><th>วิชา</th><th>กลุ่ม</th><th>ผล</th></tr>
+      {% for r in why %}
+      <tr><td>{{ r.course_code }} {{ r.name_th }}</td><td>{{ r.sec or '-' }}</td>
+        <td><span class="tag {{ 'ok' if r.ok else 'bad' }}">{{ r.result }}</span></td></tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<p class="empty">ลงครบทุกวิชาบังคับที่ถึงกำหนดแล้ว</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>R3 ตารางสอบ</h2>
+    <p class="sub">วันที่ต้องสอบมากกว่า 1 วิชาจะมีป้ายเตือน (เวลาไม่ชน แต่หนัก)</p>
+    {% if exams %}
+    <div class="table-scroll"><table>
+      <tr><th>วันที่</th><th>เวลา</th><th>วิชา</th><th>ห้อง</th></tr>
+      {% for r in exams %}
+      <tr><td>{{ r.exam_date }} {% if r.multi %}<span class="tag warn">สอบหลายวิชาวันนี้</span>{% endif %}</td>
+        <td>{{ r.time }}</td><td>{{ r.course_code }} {{ r.name_th }}</td><td>{{ r.room }}</td></tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<p class="empty">ยังไม่มีวิชาที่ลงซึ่งประกาศวันสอบ</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>R6 วิชาค้างที่ชนกับวิชาบังคับเทอมนี้</h2>
+    {% if backlog %}
+    <div class="table-scroll"><table>
+      <tr><th>วิชาค้าง</th><th>ชนกับ (ตามแผน)</th><th>ชนเรื่อง</th><th>วัน</th><th>เวลา</th></tr>
+      {% for r in backlog %}
+      <tr><td>{{ r.backlog_course }} ({{ r.sec }})</td><td>{{ r.plan_course }} ({{ r.plan_sec }})</td>
+        <td><span class="tag bad">{{ r.clash }}</span></td><td>{{ r.day_or_date }}</td>
+        <td>{{ r.backlog_time }} / {{ r.plan_time }}</td></tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<p class="empty">ไม่มีวิชาค้างที่ชนกับวิชาตามแผนเทอมนี้</p>{% endif %}
+  </section>
+</div>
+
+{% if waits %}
+<section class="card" style="margin-top:16px">
+  <h2>คิวสำรองของฉัน</h2>
+  <div class="table-scroll"><table>
+    <tr><th>วิชา</th><th class="num">ลำดับคิว</th><th>สิทธิ์</th><th>ขอเมื่อ</th><th></th></tr>
+    {% for w in waits %}
+    <tr><td>{{ w.course_code }} {{ w.name_th }} กลุ่ม {{ w.section_no }}</td><td class="num">{{ w.queue_no }}</td>
+      <td>{{ {1:'1 วิชาค้าง', 2:'2 วิชาบังคับเทอมนี้', 3:'3 อื่นๆ'}[w.priority] }}</td><td>{{ w.requested_at[:16] }}</td>
+      <td><form method="post" action="{{ url_for('leave_waitlist', sid=s.student_id, section_id=w.section_id) }}">
+        <button class="btn">ออกจากคิว</button></form></td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endif %}
+
+<section class="card" id="register" style="margin-top:16px">
+  <h2>ลงทะเบียน / ถอน / เข้าคิว</h2>
+  <p class="sub">ทุกปุ่มส่ง INSERT หรือ DELETE ไปที่ฐานข้อมูลตรงๆ ถ้าผิดกฎ trigger จะปฏิเสธและแสดงเหตุผลด้านบน · "เหลือสำหรับฉัน" คิดทั้งที่นั่งรวมและโควตาหลักสูตร</p>
+  <div class="table-scroll"><table>
+    <tr><th>วิชา</th><th>กลุ่ม</th><th>เวลาเรียน</th><th>สอบ</th><th class="num">ลงแล้ว/รับ</th><th class="num">เหลือสำหรับฉัน</th><th>แผน</th><th></th></tr>
+    {% for r in sections %}
+    <tr class="{{ 'mine' if r.is_enrolled }}">
+      <td>{{ r.course_code }} {{ r.name_th }} <span class="empty">({{ r.credits }} นก.)</span></td>
+      <td>{{ r.section_no }}</td>
+      <td>{{ r.class_time or '-' }}</td>
+      <td>{{ r.exam_time or '-' }}</td>
+      <td class="num">{{ r.enrolled }}/{{ r.capacity }}</td>
+      <td class="num">{{ r.seats_left }}</td>
+      <td>{% if r.plan_term %}<span class="tag {{ 'info' if r.is_required else 'muted' }}">{{ r.plan_term }}{{ '' if r.is_required else ' เลือก' }}</span>{% endif %}</td>
+      <td>
+        {% if r.is_enrolled %}
+          <span class="tag ok">ลงแล้ว</span>
+          <form method="post" action="{{ url_for('drop', sid=s.student_id, section_id=r.section_id) }}"><button class="btn danger">ถอน</button></form>
+        {% elif r.is_waiting %}
+          <span class="tag warn">อยู่ในคิว</span>
+        {% elif r.seats_left > 0 %}
+          <form method="post" action="{{ url_for('enroll', sid=s.student_id, section_id=r.section_id) }}"><button class="btn primary">ลงทะเบียน</button></form>
+        {% else %}
+          <form method="post" action="{{ url_for('enroll', sid=s.student_id, section_id=r.section_id) }}"><button class="btn" title="ลองลงเพื่อดูว่า trigger ปฏิเสธด้วยเหตุผลอะไร">ลอง</button></form>
+          <form method="post" action="{{ url_for('join_waitlist', sid=s.student_id, section_id=r.section_id) }}"><button class="btn">เข้าคิว</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+<p><a href="{{ url_for('log', sid=s.student_id) }}">ดูประวัติการทำรายการของ {{ s.student_id }}</a></p>
+{% endblock %}

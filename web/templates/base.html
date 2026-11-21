@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}ระบบลงทะเบียนตามแผนการเรียน{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#e4e7ec;
+          --brand:#1f5fbf; --ok:#127a3e; --okbg:#e7f6ec; --bad:#b42318; --badbg:#fdecea;
+          --warn:#8a5a00; --warnbg:#fff5d6; --info:#1f5fbf; --infobg:#e8f0fc; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:'Sarabun',system-ui,sans-serif; background:var(--bg); color:var(--ink); font-size:15px; }
+  header { background:var(--brand); color:#fff; }
+  header .wrap { display:flex; flex-wrap:wrap; gap:16px; align-items:center; padding:12px 16px; }
+  header a { color:#fff; text-decoration:none; opacity:.9; }
+  header a:hover { opacity:1; text-decoration:underline; }
+  header .brand { font-weight:600; font-size:17px; margin-right:auto; }
+  header form { margin:0; }
+  header button { background:transparent; border:1px solid #fff8; color:#fff; padding:4px 10px; border-radius:6px; cursor:pointer; font:inherit; }
+  .wrap { max-width:1200px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:8px 0 4px; } h2 { font-size:18px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 12px; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .table-scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:#f9fafb; font-weight:600; white-space:nowrap; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:999px; font-size:13px; white-space:nowrap; }
+  .tag.ok { background:var(--okbg); color:var(--ok); } .tag.bad { background:var(--badbg); color:var(--bad); }
+  .tag.warn { background:var(--warnbg); color:var(--warn); } .tag.info { background:var(--infobg); color:var(--info); }
+  .tag.muted { background:#eef0f3; color:var(--muted); }
+  .flash { padding:10px 14px; border-radius:8px; margin-bottom:10px; }
+  .flash.ok { background:var(--okbg); color:var(--ok); } .flash.error { background:var(--badbg); color:var(--bad); }
+  .flash.info { background:var(--infobg); color:var(--info); }
+  .btn { font:inherit; font-size:13px; padding:4px 10px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; white-space:nowrap; }
+  .btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .btn.danger { color:var(--bad); border-color:#f3b8b2; }
+  td form { display:inline; margin:0; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; }
+  .grid .card { margin-bottom:0; }
+  .empty { color:var(--muted); font-size:14px; }
+  input, select { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; }
+  a { color:var(--brand); }
+  tr.mine td { background:#f3f8ff; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <span class="brand">ระบบลงทะเบียนตามแผนการเรียน · CDTI 2/2569</span>
+  <a href="{{ url_for('index') }}">นักศึกษา</a>
+  <a href="{{ url_for('registrar') }}">ฝ่ายทะเบียน</a>
+  <a href="{{ url_for('log') }}">ประวัติการทำรายการ</a>
+  <form method="post" action="{{ url_for('reset') }}"><button title="ลบข้อมูลที่ทดลองทำ แล้วโหลด seed.sql ใหม่">รีเซ็ตข้อมูล</button></form>
+</div></header>
+<main class="wrap">
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}
+    <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

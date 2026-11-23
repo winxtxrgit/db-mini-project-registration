@@ -225,5 +225,48 @@ class SchedulerTests(Base):
         self.assertIn(("error", "ไม่สำเร็จ: ห้องสอบจุไม่พอสำหรับจำนวนนักศึกษาที่ลงทะเบียน"), flashes(r))
 
 
+class UITests(Base):
+    """โครงหน้าเว็บที่ออกแบบใหม่: การเข้าถึง และการกลับมาที่แถว/กลุ่มเดิมหลังทำรายการ"""
+
+    def test_skip_link_and_current_nav(self):
+        self.login("admin")
+        html = self.c.get("/admin/sections").get_data(as_text=True)
+        self.assertIn('class="skip" href="#main"', html)
+        self.assertIn('id="main"', html)
+        self.assertRegex(html, r'href="/admin/sections"\s+aria-current="page"')
+
+    def test_student_action_returns_to_row(self):
+        self.login("6799000001")
+        r = self.c.post("/me/enroll/10", data={"csrf_token": self.csrf()})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.headers["Location"].endswith("/me/#sec10"))
+
+    def test_scheduler_edit_reopens_section(self):
+        self.login("scheduler")
+        mid = self.sql("SELECT meeting_id FROM class_meeting WHERE section_id = 1")[0][0]
+        r = self.c.post(f"/schedule/meetings/{mid}", data={"csrf_token": self.csrf(), "day_of_week": "5",
+                                                            "start_time": "09:00", "end_time": "12:00",
+                                                            "room_code": "15208"})
+        self.assertTrue(r.headers["Location"].endswith("/schedule/?open=1#sec1"))
+        html = self.c.get("/schedule/?open=1").get_data(as_text=True)
+        self.assertRegex(html, r'id="sec1"\s+open')
+
+    def test_student_timetable_rendered(self):
+        self.login("6799000001")
+        html = self.c.get("/me/").get_data(as_text=True)
+        self.assertIn('class="tt"', html)
+        self.assertIn("tt-block", html)
+
+    def test_reset_requires_confirmation(self):
+        self.login("admin")
+        self.sql("DELETE FROM enrollment WHERE student_id = '6799000001'")
+        r = self.post("/admin/reset")
+        self.assertIn("error", [c for c, _ in flashes(r)])
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM enrollment WHERE student_id = '6799000001'")[0][0], 0)
+        r = self.post("/admin/reset", confirm="รีเซ็ต")
+        self.assertIn("ok", [c for c, _ in flashes(r)])
+        self.assertGreater(self.sql("SELECT COUNT(*) FROM enrollment WHERE student_id = '6799000001'")[0][0], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

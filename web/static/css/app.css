@@ -317,7 +317,9 @@ tr.mine td { background: color-mix(in srgb, var(--ok-bg) 45%, transparent); }
   table.stack td.primary-cell { display: block; text-align: left; font-size: var(--fs-md); padding-bottom: var(--s1) !important; }
   table.stack td.actions { justify-content: flex-end; padding-top: var(--s2) !important; }
   table.stack tr:target td:first-child { box-shadow: none; }
-  table.stack tr:target { box-shadow: inset 4px 0 0 var(--warn); }
+  table.stack tr:target { box-shadow: inset 4px 0 0 var(--warn); background: var(--target); }
+  table.stack tr.mine { background: color-mix(in srgb, var(--ok-bg) 45%, transparent); }
+  table.stack tr td, table.stack tr:hover td { background: transparent; }
 }
 
 /* ---------- ตัวเลขสรุป */

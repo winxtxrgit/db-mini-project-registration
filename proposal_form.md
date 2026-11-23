@@ -8,7 +8,7 @@
 |:-:|:-:|---|---|
 | 1 | 6710301007 | ดรัณภพ พิทักษ์กิจไพศาล | [Pongkarm](https://github.com/Pongkarm) |
 | 2 | 6710301009 | อภิสักก์ คงภักดี | [Kong19565](https://github.com/Kong19565) |
-| 3 | 6710301010 | โมกข์ มาลีหวล | – |
+| 3 | 6710301010 | โมกข์ มาลีหวล | [memomml](https://github.com/memomml) |
 | 4 | 6710301011 | ปาณัสม์ ตูพานิช | [Panussu](https://github.com/Panussu) |
 | 5 | 6710301032 | ธนัท จงธีรธนโชติ | [winxtxrgit](https://github.com/winxtxrgit) |
 | 6 | 6710301048 | ฐิติพันธุ์ รวมทรัพย์ | [Fujimoto301](https://github.com/Fujimoto301) |

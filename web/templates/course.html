@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ c.course_code }} {{ c.name_th }}{% endblock %}
+{% set back = url_for('student.home') if g.user.role == 'student' else (url_for('admin.sections') if g.user.role == 'admin' else url_for('scheduler.home')) %}
+{% block content %}
+{{ ui.page_header(c.course_code ~ ' ' ~ c.name_th, c.name_en or '', back=back,
+                  back_label='กลับไปหน้าลงทะเบียน' if g.user.role == 'student' else 'กลับ') }}
+
+<div class="stats">
+  {{ ui.stat('หน่วยกิต', c.credit_pattern or c.credits, 'รูปแบบ หน่วยกิต(บรรยาย-ปฏิบัติ-ศึกษาด้วยตนเอง)' if c.credit_pattern else '', 'info', ic='book', text=True) }}
+  {{ ui.stat('กลุ่มเรียนภาคนี้', sections|length, 'ยังไม่เปิดสอนในภาคปัจจุบัน' if not sections else '', 'info' if sections else 'bad', ic='layers', unit='กลุ่ม') }}
+  {% if prereqs %}
+    {% set ok = prereqs|selectattr('passed')|list|length == prereqs|length %}
+    {{ ui.stat('วิชาบังคับก่อน', prereqs|length ~ ' วิชา',
+               ('ผ่านครบแล้ว' if ok else 'ยังไม่ผ่านบางวิชา') if sid else 'ต้องผ่านก่อนจึงลงได้',
+               ('ok' if ok else 'bad') if sid else 'warn', ic='lock', text=True) }}
+  {% else %}
+    {{ ui.stat('วิชาบังคับก่อน', 'ไม่มี', 'ลงได้เลยถ้าเวลาไม่ชน', 'ok', ic='check', text=True) }}
+  {% endif %}
+</div>
+
+<section class="card flush" aria-labelledby="sec-h">
+  {{ ui.card_head('กลุ่มเรียนในภาคปัจจุบัน', (), None, 'layers', id='sec-h') }}
+  {% if sections %}
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">กลุ่ม</th><th scope="col">เวลาเรียน</th><th scope="col">สอบ</th><th scope="col">อาจารย์</th><th scope="col">ที่นั่ง</th><th scope="col">โควตาตามหลักสูตร</th>{% if sid %}<th scope="col" class="actions"><span class="sr-only">ไปที่รายการ</span></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for s in sections %}
+    <tr>
+      <td class="primary-cell">กลุ่ม {{ s.section_no }}</td>
+      <td data-label="เวลาเรียน">{{ s.class_time or '–' }}</td>
+      <td data-label="สอบ">{{ s.exam_time|thdate or '–' }}</td>
+      <td data-label="อาจารย์">{{ s.teachers or '–' }}</td>
+      <td data-label="ที่นั่ง">{{ ui.meter(s.enrolled, s.capacity, 'คน') }}</td>
+      <td data-label="โควตา">{% if s.quotas %}<div class="row">{% for q in s.quotas.split(', ') %}{{ ui.tag('info', q) }}{% endfor %}</div>{% else %}<span class="muted">ไม่จำกัด</span>{% endif %}</td>
+      {% if sid %}<td class="actions" data-label=""><a class="btn sm" href="{{ url_for('student.home', _anchor='sec' ~ s.section_id) }}">ไปลงทะเบียน</a></td>{% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="card-pad">{{ ui.empty('ยังไม่เปิดสอนในภาคปัจจุบัน', 'info') }}</div>{% endif %}
+</section>
+
+<div class="grid">
+  <section class="card" aria-labelledby="pre-h">
+    {{ ui.card_head('วิชาบังคับก่อน', (), 'ต้องผ่านวิชาเหล่านี้ก่อนจึงลงวิชานี้ได้ (trigger ตรวจตอนลงทะเบียน)', 'lock', id='pre-h') }}
+    {% if prereqs %}
+    <ul class="list">
+      {% for p in prereqs %}
+      <li><a class="code" href="{{ url_for('course_detail', code=p.course_code) }}">{{ p.course_code }}</a> {{ p.name_th }}
+        {% if sid %}<span class="right">{{ ui.tag('ok', 'ผ่านแล้ว', 'check') if p.passed else ui.tag('bad', 'ยังไม่ผ่าน', 'x') }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}{{ ui.empty('ไม่มีวิชาบังคับก่อน', 'check') }}{% endif %}
+    {% if required_by %}
+    <h3>เป็นวิชาบังคับก่อนของ</h3>
+    <div class="row">{% for r in required_by %}<a class="tag muted" href="{{ url_for('course_detail', code=r.course_code) }}">{{ r.course_code }} {{ r.name_th }}</a>{% endfor %}</div>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="plan-h">
+    {{ ui.card_head('อยู่ในแผนการเรียนของหลักสูตร', (), 'ชั้นปีและภาคที่ควรเรียนตามแผน', 'list', id='plan-h') }}
+    {% if plans %}
+    <ul class="list">
+      {% for p in plans %}
+      <li {% if p.curriculum_id == my_curriculum %}class="mine-item"{% endif %}>
+        <strong>{{ p.curriculum_id }}</strong><span class="muted">{{ p.program_name }}</span>
+        <span class="right row">{{ ui.tag('info' if p.is_required else 'muted', 'ปี ' ~ p.year_level ~ ' ภาค ' ~ p.semester ~ (' · บังคับ' if p.is_required else ' · เลือก')) }}
+          {% if p.curriculum_id == my_curriculum %}{{ ui.tag('ok', 'หลักสูตรของคุณ') }}{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}{{ ui.empty('ไม่อยู่ในแผนการเรียนของหลักสูตรใดในระบบ', 'info') }}{% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -126,7 +126,7 @@ class StudentTests(Base):
     def test_window_closed(self):
         self.sql("UPDATE term SET reg_close_at = '2000-01-02 00:00', reg_open_at = '2000-01-01 00:00' WHERE is_current = 1")
         r = self.post("/me/drop/2")
-        self.assertIn(("error", "ไม่สำเร็จ: ไม่อยู่ในช่วงลงทะเบียนของภาคเรียนนี้"), flashes(r))
+        self.assertIn(("error", "ไม่สำเร็จ: ไม่อยู่ในช่วงลงทะเบียนหรือช่วงลดวิชาของภาคเรียนนี้"), flashes(r))
 
     def test_log_has_actor(self):
         self.post("/me/drop/2")
@@ -266,6 +266,75 @@ class UITests(Base):
         r = self.post("/admin/reset", confirm="รีเซ็ต")
         self.assertIn("ok", [c for c, _ in flashes(r)])
         self.assertGreater(self.sql("SELECT COUNT(*) FROM enrollment WHERE student_id = '6799000001'")[0][0], 0)
+
+
+class CalendarTests(Base):
+    """ช่วงเพิ่ม/ลดวิชาแยกจากช่วงลงทะเบียน (ตามปฏิทินการศึกษาจริงของ reg)"""
+
+    def drop_only(self):
+        self.sql("UPDATE term SET reg_open_at = '2000-01-01 00:00', reg_close_at = '2000-01-02 00:00', "
+                 "drop_open_at = '2000-01-01 00:00', drop_close_at = '2099-12-31 23:59' WHERE is_current = 1")
+
+    def test_drop_only_window(self):
+        self.drop_only()
+        self.login("6799000005")
+        r = self.post("/me/drop/3")
+        self.assertIn("ok", [c for c, _ in flashes(r)])
+        r = self.post("/me/enroll/3")
+        self.assertIn(("error", "ไม่สำเร็จ: ไม่อยู่ในช่วงลงทะเบียนหรือช่วงเพิ่มวิชาของภาคเรียนนี้"), flashes(r))
+        self.assertIn("ช่วงลดวิชา", r.get_data(as_text=True))
+
+    def test_add_window_allows_enroll_not_drop(self):
+        self.sql("UPDATE term SET reg_open_at = '2000-01-01 00:00', reg_close_at = '2000-01-02 00:00', "
+                 "add_open_at = '2000-01-01 00:00', add_close_at = '2099-12-31 23:59' WHERE is_current = 1")
+        self.login("6799000005")
+        r = self.post("/me/drop/3")
+        self.assertIn(("error", "ไม่สำเร็จ: ไม่อยู่ในช่วงลงทะเบียนหรือช่วงลดวิชาของภาคเรียนนี้"), flashes(r))
+
+    def test_drop_promotes_waitlist_even_when_add_closed(self):
+        # เดิมกฎช่วงเวลาตรวจทุกการลง ทำให้การเลื่อนคิวให้คนอื่นตอนถอนในช่วงลดวิชาล้มทั้ง transaction
+        self.drop_only()
+        self.sql("INSERT INTO enrollment (student_id, section_id) VALUES ('F0287',1),('F0288',1),('F0289',1)")
+        self.sql("INSERT INTO waitlist (student_id, section_id) VALUES ('F0290', 1)")
+        self.login("6799000001")
+        r = self.post("/me/drop/1")
+        self.assertIn("ok", [c for c, _ in flashes(r)])
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM enrollment WHERE student_id = 'F0290' AND section_id = 1")[0][0], 1)
+
+    def test_admin_sets_windows(self):
+        self.login("admin")
+        self.post("/admin/terms/2569-2", reg_open_at="2026-10-29T09:00", reg_close_at="2026-11-04T15:30",
+                  add_open_at="2026-11-09T09:00", add_close_at="2026-11-20T15:30",
+                  drop_open_at="2026-11-09T09:00", drop_close_at="2026-12-04T15:30", max_credits="22")
+        row = self.sql("SELECT add_open_at, drop_close_at FROM term WHERE term_id = '2569-2'")[0]
+        self.assertEqual(row, ("2026-11-09 09:00", "2026-12-04 15:30"))
+
+
+class CourseAndDisplayTests(Base):
+    def test_course_page_all_roles(self):
+        for user in ("6799000001", "admin", "scheduler"):
+            self.c = app.test_client()
+            self.login(user)
+            html = self.c.get("/courses/310-3419").get_data(as_text=True)
+            self.assertIn("310-3419", html)
+            self.assertIn("กลุ่มเรียนในภาคปัจจุบัน", html)
+        self.assertEqual(self.c.get("/courses/NOPE").status_code, 404)
+
+    def test_course_page_shows_prerequisite_status(self):
+        self.login("6799000001")
+        html = self.c.get("/courses/310-3416").get_data(as_text=True)
+        self.assertIn("310-2101", html)
+
+    def test_thai_dates(self):
+        self.assertEqual(core.thai_datetime("2027-01-15 23:59"), "15 ม.ค. 2570 23:59 น.")
+        self.assertEqual(core.thai_date("2027-03-01 09:00-12:00"), "1 มี.ค. 2570 09:00-12:00")
+        self.assertEqual(core.thai_date(None), "")
+
+    def test_student_list_shows_teacher_and_credit_pattern(self):
+        self.login("6799000001")
+        html = self.c.get("/me/").get_data(as_text=True)
+        self.assertIn("3(3-0-6)", html)
+        self.assertIn('data-filter-select', html)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@
     {% for s in sections %}
     {% set tags = ['full' if s.available <= 0, 'wait' if s.waiting, 'quota' if s.quotas]|select|join(' ') %}
     <tr id="sec{{ s.section_id }}" data-filter-item data-tags="{{ tags }}" data-text="{{ s.course_code }} {{ s.name_th }}">
-      <td class="primary-cell"><span class="code">{{ s.course_code }}</span> {{ s.name_th }}<span class="cell-sub">กลุ่ม {{ s.section_no }} · {{ s.credits }} หน่วยกิต</span></td>
+      <td class="primary-cell"><a class="code" href="{{ url_for('course_detail', code=s.course_code) }}">{{ s.course_code }}</a> {{ s.name_th }}<span class="cell-sub">กลุ่ม {{ s.section_no }} · {{ s.credits }} หน่วยกิต</span></td>
       <td data-label="ลง/รับ">{{ ui.meter(s.enrolled, s.capacity, 'คน') }}{% if s.available <= 0 %}<span class="cell-sub">{{ ui.tag('bad', 'เต็ม') }}</span>{% endif %}</td>
       <td data-label="จำนวนรับ">
         <form method="post" class="inline" action="{{ url_for('admin.section_capacity', section_id=s.section_id) }}">

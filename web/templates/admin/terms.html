@@ -1,28 +1,41 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 {% block title %}ภาคเรียน{% endblock %}
+{% set WINDOWS = [('reg', 'ช่วงลงทะเบียน', 'นักศึกษาลง ถอน และเข้าคิวได้'),
+                  ('add', 'ช่วงเพิ่มวิชา (รวมลงทะเบียนล่าช้า)', 'ลงและเข้าคิวได้ แต่ถอนไม่ได้'),
+                  ('drop', 'ช่วงลดวิชา', 'ถอนได้ แต่ลงเพิ่มไม่ได้')] %}
 {% block content %}
-{{ ui.page_header('ภาคเรียน', 'ช่วงลงทะเบียนใช้กับนักศึกษาเท่านั้น (ฝ่ายทะเบียนทำรายการแทนได้ทุกเวลา) · มีภาคปัจจุบันได้ภาคเดียว') }}
+{{ ui.page_header('ภาคเรียน', 'กำหนดช่วงต่างๆ ตามปฏิทินการศึกษา · ใช้กับนักศึกษาที่ทำรายการเองเท่านั้น (ฝ่ายทะเบียนทำรายการแทนได้ทุกเวลา) · มีภาคปัจจุบันได้ภาคเดียว') }}
 {% for t in terms %}
+{% set ph = term_phase(t) %}
 <section class="card" aria-labelledby="t{{ loop.index }}">
   {% call ui.card_head('ภาคเรียน ' ~ t.term_id, (), None, 'calendar', id='t' ~ loop.index) %}
     <div class="row">
       {% if t.is_current %}{{ ui.tag('info', 'ภาคปัจจุบัน', 'check') }}{% endif %}
-      {% if t.reg_is_open %}{{ ui.tag('ok', 'เปิดลงทะเบียนอยู่') }}{% else %}{{ ui.tag('muted', 'ปิดลงทะเบียน') }}{% endif %}
+      {{ ui.tag(ph.kind if ph.open else 'muted', ph.label) }}
       {% if not t.is_current %}{{ ui.action_form(url_for('admin.term_set_current', term_id=t.term_id), 'ตั้งเป็นภาคปัจจุบัน') }}{% endif %}
     </div>
   {% endcall %}
   <form method="post" action="{{ url_for('admin.term_update', term_id=t.term_id) }}">
     {{ csrf_field() }}
-    <div class="form-grid">
-      <div class="field"><label for="o{{ loop.index }}">เปิดลงทะเบียน</label>
-        <input id="o{{ loop.index }}" type="datetime-local" name="reg_open_at" value="{{ (t.reg_open_at or '')|replace(' ', 'T') }}"></div>
-      <div class="field"><label for="c{{ loop.index }}">ปิดลงทะเบียน</label>
-        <input id="c{{ loop.index }}" type="datetime-local" name="reg_close_at" value="{{ (t.reg_close_at or '')|replace(' ', 'T') }}"></div>
-      <div class="field"><label for="m{{ loop.index }}">เพดานหน่วยกิตต่อภาค</label>
-        <input id="m{{ loop.index }}" type="number" min="1" name="max_credits" value="{{ t.max_credits }}"></div>
+    {% set n = loop.index %}
+    {% for key, name, help in WINDOWS %}
+    <fieldset class="window-set">
+      <legend>{{ name }} {% if t[key ~ '_is_open'] %}{{ ui.tag('ok', 'เปิดอยู่') }}{% endif %}</legend>
+      <p class="help muted">{{ help }} · เว้นว่างทั้งสองช่อง = ไม่เปิดช่วงนี้</p>
+      <div class="form-grid">
+        <div class="field"><label for="{{ key }}o{{ n }}">เปิด</label>
+          <input id="{{ key }}o{{ n }}" type="datetime-local" name="{{ key }}_open_at" value="{{ (t[key ~ '_open_at'] or '')|replace(' ', 'T') }}"></div>
+        <div class="field"><label for="{{ key }}c{{ n }}">ปิด</label>
+          <input id="{{ key }}c{{ n }}" type="datetime-local" name="{{ key }}_close_at" value="{{ (t[key ~ '_close_at'] or '')|replace(' ', 'T') }}"></div>
+      </div>
+    </fieldset>
+    {% endfor %}
+    <div class="form-grid" style="margin-top: var(--s4)">
+      <div class="field"><label for="m{{ n }}">เพดานหน่วยกิตต่อภาค</label>
+        <input id="m{{ n }}" type="number" min="1" name="max_credits" value="{{ t.max_credits }}"></div>
     </div>
-    <div class="form-actions"><button class="btn primary">บันทึก</button><span class="help muted">เว้นว่างทั้งสองช่อง = ยังไม่เปิดลงทะเบียน · เวลาปิดต้องหลังเวลาเปิด</span></div>
+    <div class="form-actions"><button class="btn primary">บันทึก</button><span class="help muted">เวลาปิดต้องหลังเวลาเปิดทุกช่วง</span></div>
   </form>
 </section>
 {% endfor %}

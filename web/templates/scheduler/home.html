@@ -115,7 +115,7 @@
             {{ ui.action_form(url_for('scheduler.exam_delete', exam_id=x.exam_id), 'ลบ', 'btn danger', 'trash', aria='ลบเวลาสอบ ' ~ x.exam_date) }}
           </div>
           {% else %}
-          <p class="mb0">{{ 'ปลายภาค' if x.exam_type == 'FINAL' else 'กลางภาค' }} · {{ x.exam_date }} {{ x.start_time }}–{{ x.end_time }} · ห้อง {{ x.room_code or '–' }}</p>
+          <p class="mb0">{{ 'ปลายภาค' if x.exam_type == 'FINAL' else 'กลางภาค' }} · {{ x.exam_date|thdate }} {{ x.start_time }}–{{ x.end_time }} · ห้อง {{ x.room_code or '–' }}</p>
           {% endif %}
         {% else %}<p class="muted">ยังไม่มีเวลาสอบ</p>{% endfor %}
         {% if can_edit and xs|length < 2 %}

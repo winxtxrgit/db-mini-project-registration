@@ -1,4 +1,5 @@
 """ฟังก์ชันกลางที่ทุกส่วนใช้: เชื่อมต่อฐานข้อมูล ทำรายการพร้อมระบุผู้ทำรายการ ตรวจสิทธิ์"""
+import re
 import sqlite3
 from functools import wraps
 from pathlib import Path
@@ -193,3 +194,43 @@ def timetable(meetings, sub_key: str = "room_code", tone_key: str = "course_code
     by_day = [(DAYS[d], [b for b in blocks if b["dow"] == d]) for d in days if d in used]
     return {"empty": False, "days": [(d, DAYS[d]) for d in days], "rows": rows_,
             "lines": lines, "blocks": blocks, "by_day": by_day}
+
+
+# ------------------------------------------------------------------ แสดงผลแบบไทย (ใช้เป็น Jinja filter/global)
+TH_MONTHS = ("ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.")
+_DATETIME_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?")
+_DATE_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+
+
+def _th(y: str, m: str, d: str) -> str:
+    return f"{int(d)} {TH_MONTHS[int(m) - 1]} {int(y) + 543}"
+
+
+def thai_datetime(value) -> str:
+    """'2027-01-15 23:59' → '15 ม.ค. 2570 23:59 น.' (แปลงทุกจุดในข้อความ ส่วนอื่นคงเดิม)"""
+    if value is None:
+        return ""
+    return _DATETIME_RE.sub(lambda m: f"{_th(*m.group(1, 2, 3))} {m.group(4)}:{m.group(5)} น.", str(value))
+
+
+def thai_date(value) -> str:
+    """'2027-03-01 09:00-12:00' → '1 มี.ค. 2570 09:00-12:00' (แปลงเฉพาะวันที่)"""
+    if value is None:
+        return ""
+    return _DATE_RE.sub(lambda m: _th(*m.group(1, 2, 3)), str(value))
+
+
+def term_phase(t) -> dict:
+    """สรุปว่าภาคเรียนอยู่ช่วงไหนตามปฏิทิน (ต้องมีคอลัมน์ reg_is_open, add_is_open, drop_is_open จาก v_term_status)"""
+    if t is None:
+        return {"label": "ไม่มีภาคปัจจุบัน", "kind": "muted", "open": False, "detail": ""}
+    reg, add, drop = t["reg_is_open"], t["add_is_open"], t["drop_is_open"]
+    if reg:
+        return {"label": "เปิดลงทะเบียน", "kind": "ok", "open": True, "detail": "ลง ถอน และเข้าคิวได้"}
+    if add and drop:
+        return {"label": "ช่วงเพิ่ม-ลดวิชา", "kind": "ok", "open": True, "detail": "ลง ถอน และเข้าคิวได้"}
+    if add:
+        return {"label": "ช่วงเพิ่มวิชา", "kind": "warn", "open": True, "detail": "ลงและเข้าคิวได้ แต่ถอนไม่ได้"}
+    if drop:
+        return {"label": "ช่วงลดวิชา", "kind": "warn", "open": True, "detail": "ถอนได้ แต่ลงเพิ่มไม่ได้"}
+    return {"label": "ปิดลงทะเบียน", "kind": "bad", "open": False, "detail": "นักศึกษาทำรายการเองไม่ได้"}

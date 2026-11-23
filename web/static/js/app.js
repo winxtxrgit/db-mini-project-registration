@@ -62,11 +62,13 @@
        <input data-filter-text>                      ค้นหาจาก data-text ของแต่ละแถว
        <button class="chip" data-filter-chip="key">  แสดงเฉพาะแถวที่ data-tags มี key ("all" = ทั้งหมด)
        <tr data-filter-item data-text="..." data-tags="a b">
+       <select data-filter-select>                   แสดงเฉพาะแถวที่ data-tags มีค่าที่เลือก (เว้นว่าง = ทั้งหมด)
        <p data-filter-empty hidden>                 แสดงเมื่อไม่มีแถวตรงเงื่อนไข                       */
   document.querySelectorAll("[data-filter-scope]").forEach(function (scope) {
     var input = scope.querySelector("[data-filter-text]");
     var chips = scope.querySelectorAll("[data-filter-chip]");
     var items = scope.querySelectorAll("[data-filter-item]");
+    var selects = scope.querySelectorAll("[data-filter-select]");   /* ค่าที่เลือก = tag ที่ต้องมี ("" = ทั้งหมด) */
     var empty = scope.querySelector("[data-filter-empty]");
     var live = scope.querySelector("[data-filter-status]");
     var active = "all";
@@ -78,6 +80,9 @@
         var text = (it.getAttribute("data-text") || it.textContent).toLowerCase();
         var tags = " " + (it.getAttribute("data-tags") || "") + " ";
         var ok = (!q || text.indexOf(q) !== -1) && (active === "all" || tags.indexOf(" " + active + " ") !== -1);
+        selects.forEach(function (sel) {
+          if (sel.value && tags.indexOf(" " + sel.value + " ") === -1) ok = false;
+        });
         it.hidden = !ok;
         if (ok) shown++;
       });
@@ -85,6 +90,7 @@
       if (live) live.textContent = "แสดง " + shown + " จาก " + items.length + " รายการ";
     }
     if (input) input.addEventListener("input", run);
+    selects.forEach(function (sel) { sel.addEventListener("change", run); });
     chips.forEach(function (chip) {
       chip.addEventListener("click", function () {
         active = chip.getAttribute("data-filter-chip");

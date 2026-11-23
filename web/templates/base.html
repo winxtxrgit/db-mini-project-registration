@@ -40,6 +40,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}หน้าหลัก{% endblock %} · ระบบลงทะเบียนตามแผนการเรียน</title>
 <script>/* ตั้งธีมก่อนวาดหน้า กันจอกะพริบ */try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='img/cdti-logo.png') }}">
+<meta name="theme-color" content="#00589a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
@@ -52,16 +54,16 @@
 
 <header class="topbar">
   <a class="brand" href="{{ url_for('index') }}">
-    <span class="brand-mark">{{ ui.icon('cap') }}</span>
+    <span class="logo-wrap"><img class="logo" src="{{ url_for('static', filename='img/cdti-logo.png') }}" alt="" width="32" height="40"></span>
     <span class="brand-text">ลงทะเบียนตามแผนการเรียน<small>สถาบันเทคโนโลยีจิตรลดา</small></span>
   </a>
   {% if g.user %}
     {% if role == 'student' %}{{ nav_links('topnav') }}{% endif %}
-    {% if current_term %}
-    <span class="term-chip {{ 'open' if current_term.reg_is_open }}" title="ภาคเรียนปัจจุบัน">
+    {% if current_term %}{% set ph = term_phase(current_term) %}
+    <span class="term-chip {{ ph.kind }}" title="ภาคเรียนปัจจุบัน · {{ ph.detail }}">
       <span class="dot" aria-hidden="true"></span>
       <span>{{ current_term.term_id }}</span>
-      <span class="term-label">· {{ 'เปิดลงทะเบียน' if current_term.reg_is_open else 'ปิดลงทะเบียน' }}</span>
+      <span class="term-label">· {{ ph.label }}</span>
     </span>
     {% endif %}
     <span class="who">{{ g.user.username }}<small>{{ ROLE_NAME[role] }}</small></span>

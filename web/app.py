@@ -13,7 +13,9 @@ from flask import (Flask, abort, flash, g, redirect, render_template, request,
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from core import BASE, DAYS, HOME, ROLE_NAME, close_db, one
+import reports as R
+from core import (BASE, DAYS, HOME, ROLE_NAME, close_db, one, require, rows, term_phase,
+                  thai_date, thai_datetime)
 from views_admin import bp as admin_bp
 from views_scheduler import bp as scheduler_bp
 from views_student import bp as student_bp
@@ -32,7 +34,8 @@ def _secret_key() -> str:
 
 app.secret_key = _secret_key()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
-app.jinja_env.globals.update(DAYS=DAYS, ROLE_NAME=ROLE_NAME)
+app.jinja_env.globals.update(DAYS=DAYS, ROLE_NAME=ROLE_NAME, term_phase=term_phase)
+app.jinja_env.filters.update(thdate=thai_date, thdatetime=thai_datetime)
 app.teardown_appcontext(close_db)
 
 
@@ -41,8 +44,7 @@ def layout_context():
     """ข้อมูลที่ทุกหน้าใช้ใน base.html: ภาคเรียนปัจจุบัน และเลขเวอร์ชันไฟล์ static (กัน browser ใช้ไฟล์เก่า)"""
     term = None
     if g.get("user") is not None:
-        term = one("SELECT term_id, reg_is_open, reg_open_at, reg_close_at, max_credits "
-                   "FROM v_term_status WHERE is_current = 1")
+        term = one("SELECT * FROM v_term_status WHERE is_current = 1")
     return {"current_term": term, "static_v": _static_version() if app.debug else _STATIC_V}
 
 
@@ -127,6 +129,25 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/courses/<code>")
+@require()
+def course_detail(code):
+    """รายละเอียดวิชา: ทุกบทบาทที่ login แล้วเปิดดูได้ (นักศึกษาเห็นสถานะของตัวเองเพิ่ม)"""
+    course = one(R.COURSE_DETAIL, code=code)
+    if course is None:
+        abort(404)
+    sid = g.user["student_id"] if g.user["role"] == "student" else None
+    me = one("SELECT curriculum_id FROM student WHERE student_id = :s", s=sid) if sid else None
+    return render_template(
+        "course.html", c=course, sid=sid,
+        prereqs=rows(R.COURSE_PREREQS, code=code, sid=sid or ""),
+        required_by=rows(R.COURSE_REQUIRED_BY, code=code),
+        plans=rows(R.COURSE_PLANS, code=code),
+        sections=rows(R.COURSE_SECTIONS, code=code),
+        my_curriculum=me["curriculum_id"] if me else None,
+    )
 
 
 @app.errorhandler(403)

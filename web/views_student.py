@@ -6,7 +6,7 @@
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 
 import reports as R
-from core import one, require, rows, section_label, write
+from core import one, require, rows, section_label, timetable, write
 
 bp = Blueprint("student", __name__, url_prefix="/me")
 
@@ -16,14 +16,17 @@ def render_registration(sid: str, endpoint_prefix: str, url_kwargs: dict):
     info = one(R.STUDENT_INFO, sid=sid)
     if info is None:
         abort(404)
+    sections = rows(R.SECTIONS_FOR_STUDENT, sid=sid)
     return render_template(
         "registration.html",
         s=info,
+        tt=timetable(rows(R.STUDENT_MEETINGS, sid=sid)),
+        sec_ids={(r["course_code"], r["section_no"]): r["section_id"] for r in sections},
         plan=rows(R.R1_PLAN_STATUS, sid=sid),
         why=rows(R.R2_WHY_NOT, sid=sid),
         exams=rows(R.R3_EXAMS, sid=sid),
         backlog=rows(R.R6_BACKLOG_CLASH, sid=sid),
-        sections=rows(R.SECTIONS_FOR_STUDENT, sid=sid),
+        sections=sections,
         waits=rows("SELECT * FROM (" + R.WAITLIST_RANK + ") WHERE student_id = :sid", sid=sid),
         ep=endpoint_prefix,
         ukw=url_kwargs,
@@ -71,7 +74,7 @@ def act(action, section_id):
     if action not in ACTIONS:
         abort(404)
     ACTIONS[action](g.user["student_id"], section_id)   # ทำได้เฉพาะของตัวเองเสมอ
-    return redirect(url_for("student.home") + "#register")
+    return redirect(url_for("student.home", _anchor=f"sec{section_id}"))   # กลับมาที่แถวเดิม
 
 
 @bp.route("/log")

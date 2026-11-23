@@ -1,16 +1,29 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% block title %}หน่วยกิตเทียบเพดาน{% endblock %}
 {% block content %}
-<h1>R7 หน่วยกิตที่ลงในภาคปัจจุบัน เทียบเพดาน</h1>
-<div class="card"><form><input name="q" value="{{ q }}" placeholder="รหัส ชื่อ หรือรหัสหลักสูตร"> <button class="btn primary">ค้นหา</button></form></div>
-<div class="card table-scroll">
-  <table>
-    <tr><th>รหัส</th><th>ชื่อ</th><th>หลักสูตร</th><th class="num">วิชา</th><th class="num">หน่วยกิต</th><th class="num">เพดาน</th><th></th></tr>
+{{ ui.page_header('หน่วยกิตที่ลงในภาคปัจจุบัน เทียบเพดาน', 'แสดงไม่เกิน 200 คน', back=url_for('admin.students'), back_label='นักศึกษา', codes=('R7',)) }}
+<section class="card">
+  <form class="form-row" role="search" aria-label="ค้นหานักศึกษา">
+    <div class="field" style="flex:1 1 280px"><label for="q">ค้นหา</label><input id="q" name="q" value="{{ q }}" placeholder="รหัส ชื่อ หรือรหัสหลักสูตร"></div>
+    <button class="btn primary">{{ ui.icon('search', 'i-sm') }}ค้นหา</button>
+    {% if q %}<a class="btn ghost" href="?">ล้าง</a>{% endif %}
+  </form>
+</section>
+<section class="card flush">
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">รหัส</th><th scope="col">ชื่อ</th><th scope="col">หลักสูตร</th><th scope="col" class="num">วิชา</th><th scope="col">หน่วยกิต / เพดาน</th><th scope="col">สถานะ</th></tr></thead>
+    <tbody>
     {% for r in rows_ %}
-    <tr><td><a href="{{ url_for('admin.student_view', sid=r.student_id) }}">{{ r.student_id }}</a></td><td>{{ r.name }}</td>
-      <td>{{ r.curriculum_id }}</td><td class="num">{{ r.courses }}</td><td class="num">{{ r.credits }}</td><td class="num">{{ r.max_credits }}</td>
-      <td>{% if r.credits == 0 %}<span class="tag muted">ยังไม่ลง</span>{% elif r.credits >= r.max_credits %}<span class="tag warn">เต็มเพดาน</span>{% endif %}</td></tr>
+    <tr>
+      <td class="primary-cell"><a class="code" href="{{ url_for('admin.student_view', sid=r.student_id) }}">{{ r.student_id }}</a></td>
+      <td data-label="ชื่อ">{{ r.name }}</td><td data-label="หลักสูตร">{{ r.curriculum_id }}</td>
+      <td class="num" data-label="วิชา">{{ r.courses }}</td>
+      <td data-label="หน่วยกิต">{{ ui.meter(r.credits, r.max_credits, 'หน่วยกิต') }}</td>
+      <td data-label="สถานะ">{% if r.credits == 0 %}{{ ui.tag('muted', 'ยังไม่ลง') }}{% elif r.credits >= r.max_credits %}{{ ui.tag('warn', 'เต็มเพดาน', 'alert') }}{% else %}{{ ui.tag('ok', 'ลงได้อีก ' ~ (r.max_credits - r.credits)) }}{% endif %}</td>
+    </tr>
     {% endfor %}
-  </table>
-</div>
+    </tbody>
+  </table></div>
+</section>
 {% endblock %}

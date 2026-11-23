@@ -5,10 +5,10 @@
 """
 from collections import defaultdict
 
-from flask import Blueprint, flash, redirect, render_template, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 import reports as R
-from core import form_int, form_str, one, require, rows, section_label, write
+from core import form_int, form_str, one, require, rows, section_label, timetable, write
 
 bp = Blueprint("scheduler", __name__, url_prefix="/schedule")
 
@@ -16,13 +16,22 @@ VIEW = ("scheduler", "admin")   # ดูได้
 EDIT = ("scheduler",)           # แก้ได้
 
 
-def back():
-    return redirect(url_for("scheduler.home"))
+def back(section_id=None):
+    """กลับไปหน้าจัดตาราง โดยเปิดกลุ่มเรียนที่เพิ่งแก้ค้างไว้ (?open=) และเลื่อนไปที่กลุ่มนั้น (#sec)"""
+    if section_id is None:
+        return redirect(url_for("scheduler.home"))
+    return redirect(url_for("scheduler.home", open=section_id, _anchor=f"sec{section_id}"))
 
 
-def _fail(exc: Exception):
+def _fail(exc: Exception, section_id=None):
     flash(f"ไม่สำเร็จ: {exc}", "error")
-    return back()
+    return back(section_id)
+
+
+def _section_of(table: str, key: str, value: int):
+    """หา section_id ของคาบเรียนหรือเวลาสอบ (table/key มาจากโค้ดเท่านั้น ไม่ได้มาจากผู้ใช้)"""
+    r = one(f"SELECT section_id FROM {table} WHERE {key} = :v", v=value)
+    return r["section_id"] if r else None
 
 
 @bp.route("/")
@@ -41,6 +50,7 @@ def home():
         rooms=rows("SELECT room_code, capacity FROM room ORDER BY room_code"),
         instructors=rows("SELECT instructor_id, full_name FROM instructor ORDER BY full_name"),
         term=one("SELECT term_id FROM term WHERE is_current = 1"),
+        open_id=request.args.get("open", type=int),
     )
 
 
@@ -58,30 +68,32 @@ def meeting_add(section_id):
     try:
         day, start, end, room = _meeting_form()
     except ValueError as exc:
-        return _fail(exc)
+        return _fail(exc, section_id)
     write([("INSERT INTO class_meeting (section_id, day_of_week, start_time, end_time, room_code) "
             "VALUES (?, ?, ?, ?, ?)", (section_id, day, start, end, room))],
           f"เพิ่มเวลาเรียน {section_label(section_id)} แล้ว")
-    return back()
+    return back(section_id)
 
 
 @bp.post("/meetings/<int:meeting_id>")
 @require(*EDIT)
 def meeting_edit(meeting_id):
+    sid = _section_of("class_meeting", "meeting_id", meeting_id)
     try:
         day, start, end, room = _meeting_form()
     except ValueError as exc:
-        return _fail(exc)
+        return _fail(exc, sid)
     write([("UPDATE class_meeting SET day_of_week = ?, start_time = ?, end_time = ?, room_code = ? "
             "WHERE meeting_id = ?", (day, start, end, room, meeting_id))], "แก้เวลาเรียนแล้ว")
-    return back()
+    return back(sid)
 
 
 @bp.post("/meetings/<int:meeting_id>/delete")
 @require(*EDIT)
 def meeting_delete(meeting_id):
+    sid = _section_of("class_meeting", "meeting_id", meeting_id)
     write([("DELETE FROM class_meeting WHERE meeting_id = ?", (meeting_id,))], "ลบเวลาเรียนแล้ว")
-    return back()
+    return back(sid)
 
 
 # ------------------------------------------------------------------ อาจารย์ผู้สอน
@@ -91,10 +103,10 @@ def instructor_add(section_id):
     try:
         iid = form_int("instructor_id")
     except ValueError as exc:
-        return _fail(exc)
+        return _fail(exc, section_id)
     write([("INSERT INTO section_instructor (section_id, instructor_id) VALUES (?, ?)", (section_id, iid))],
           f"มอบหมายอาจารย์ให้ {section_label(section_id)} แล้ว")
-    return back()
+    return back(section_id)
 
 
 @bp.post("/sections/<int:section_id>/instructors/<int:instructor_id>/delete")
@@ -102,7 +114,7 @@ def instructor_add(section_id):
 def instructor_remove(section_id, instructor_id):
     write([("DELETE FROM section_instructor WHERE section_id = ? AND instructor_id = ?",
             (section_id, instructor_id))], "ถอดอาจารย์ผู้สอนแล้ว")
-    return back()
+    return back(section_id)
 
 
 # ------------------------------------------------------------------ เวลาสอบ
@@ -119,30 +131,32 @@ def exam_add(section_id):
             raise ValueError("ประเภทสอบไม่ถูกต้อง")
         date, start, end, room = _exam_form()
     except ValueError as exc:
-        return _fail(exc)
+        return _fail(exc, section_id)
     write([("INSERT INTO exam (section_id, exam_type, exam_date, start_time, end_time, room_code) "
             "VALUES (?, ?, ?, ?, ?, ?)", (section_id, exam_type, date, start, end, room))],
           f"เพิ่มเวลาสอบ {section_label(section_id)} แล้ว")
-    return back()
+    return back(section_id)
 
 
 @bp.post("/exams/<int:exam_id>")
 @require(*EDIT)
 def exam_edit(exam_id):
+    sid = _section_of("exam", "exam_id", exam_id)
     try:
         date, start, end, room = _exam_form()
     except ValueError as exc:
-        return _fail(exc)
+        return _fail(exc, sid)
     write([("UPDATE exam SET exam_date = ?, start_time = ?, end_time = ?, room_code = ? WHERE exam_id = ?",
             (date, start, end, room, exam_id))], "แก้เวลาสอบแล้ว")
-    return back()
+    return back(sid)
 
 
 @bp.post("/exams/<int:exam_id>/delete")
 @require(*EDIT)
 def exam_delete(exam_id):
+    sid = _section_of("exam", "exam_id", exam_id)
     write([("DELETE FROM exam WHERE exam_id = ?", (exam_id,))], "ลบเวลาสอบแล้ว")
-    return back()
+    return back(sid)
 
 
 # ------------------------------------------------------------------ ห้อง อาจารย์ ประวัติ
@@ -152,8 +166,10 @@ def rooms():
     usage = defaultdict(list)
     for u in rows(R.R8_ROOM_USAGE):
         usage[u["room_code"]].append(u)
-    return render_template("scheduler/rooms.html", usage=usage,
-                           rooms=rows("SELECT room_code, capacity FROM room ORDER BY room_code"))
+    room_list = rows("SELECT room_code, capacity FROM room ORDER BY room_code")
+    selected = request.args.get("room") or next((r["room_code"] for r in room_list if usage[r["room_code"]]), None)
+    tt = timetable(rows(R.ROOM_MEETINGS, room=selected), sub_key="teachers") if selected else {"empty": True}
+    return render_template("scheduler/rooms.html", usage=usage, rooms=room_list, selected=selected, tt=tt)
 
 
 @bp.post("/rooms")
@@ -174,7 +190,10 @@ def room_save():
 @bp.route("/instructors")
 @require(*VIEW)
 def instructors():
-    return render_template("scheduler/instructors.html", load=rows(R.R9_INSTRUCTOR_LOAD))
+    load = rows(R.R9_INSTRUCTOR_LOAD)
+    selected = request.args.get("instructor", type=int) or next((r["instructor_id"] for r in load if r["sections"]), None)
+    tt = timetable(rows(R.INSTRUCTOR_MEETINGS, iid=selected)) if selected else {"empty": True}
+    return render_template("scheduler/instructors.html", load=load, selected=selected, tt=tt)
 
 
 @bp.route("/log")

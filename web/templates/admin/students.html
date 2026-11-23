@@ -1,40 +1,58 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% block title %}นักศึกษา{% endblock %}
 {% block content %}
-<h1>นักศึกษา</h1>
-<div class="card">
-  <form>
-    <input name="q" value="{{ q }}" placeholder="รหัส ชื่อ หรือรหัสหลักสูตร">
-    <button class="btn primary">ค้นหา</button>
-    <a href="{{ url_for('admin.credits') }}">R7 หน่วยกิตเทียบเพดาน</a>
-  </form>
-</div>
-
-<div class="card table-scroll">
-  <table>
-    <tr><th>รหัส</th><th>ชื่อ</th><th>หลักสูตร</th><th class="num">ปีเข้า</th><th class="num">หน่วยกิตเทอมนี้</th><th>บัญชีผู้ใช้</th></tr>
-    {% for s in students %}
-    <tr><td><a href="{{ url_for('admin.student_view', sid=s.student_id) }}">{{ s.student_id }}</a></td>
-      <td>{{ s.first_name }} {{ s.last_name }}</td><td>{{ s.curriculum_id }}</td><td class="num">{{ s.entry_year }}</td>
-      <td class="num">{{ s.credits }}</td>
-      <td>{% if s.username %}<span class="tag {{ 'ok' if s.is_active else 'muted' }}">{{ s.username }}{{ '' if s.is_active else ' (ปิด)' }}</span>
-          {% else %}<span class="empty">ยังไม่มี</span>{% endif %}</td></tr>
-    {% else %}<tr><td colspan="6" class="empty">ไม่พบ</td></tr>{% endfor %}
-  </table>
-  <p class="empty">แสดงไม่เกิน 200 คน · นักศึกษาจำลองหลักสูตร EXT (F0001…) อยู่ท้ายรายการ</p>
-</div>
+{% call ui.page_header('นักศึกษา', 'กดรหัสนักศึกษาเพื่อดูแผนการเรียนและทำรายการแทน') %}
+  <a class="btn" href="{{ url_for('admin.credits') }}">{{ ui.icon('chart', 'i-sm') }}หน่วยกิตเทียบเพดาน</a>
+  <a class="btn primary" href="#new-student">{{ ui.icon('plus', 'i-sm') }}เพิ่มนักศึกษา</a>
+{% endcall %}
 
 <section class="card">
-  <h2>เพิ่มนักศึกษา</h2>
-  <form method="post" class="inline" action="{{ url_for('admin.student_new') }}">
+  <form class="form-row" role="search" aria-label="ค้นหานักศึกษา">
+    <div class="field" style="flex:1 1 280px"><label for="q">ค้นหา</label>
+      <input id="q" name="q" value="{{ q }}" placeholder="รหัส ชื่อ นามสกุล หรือรหัสหลักสูตร (เช่น CPE63)"></div>
+    <button class="btn primary">{{ ui.icon('search', 'i-sm') }}ค้นหา</button>
+    {% if q %}<a class="btn ghost" href="?">ล้าง</a>{% endif %}
+  </form>
+</section>
+
+<section class="card flush" aria-labelledby="list-h">
+  {% call ui.card_head('รายชื่อ', (), None, 'cap', id='list-h') %}<span class="muted">พบ {{ students|length }}{{ '+' if students|length >= 200 }} คน</span>{% endcall %}
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">รหัส</th><th scope="col">ชื่อ</th><th scope="col">หลักสูตร</th><th scope="col" class="num">ปีเข้า</th><th scope="col" class="num">หน่วยกิตเทอมนี้</th><th scope="col">บัญชีผู้ใช้</th></tr></thead>
+    <tbody>
+    {% for s in students %}
+    <tr>
+      <td class="primary-cell"><a class="code" href="{{ url_for('admin.student_view', sid=s.student_id) }}">{{ s.student_id }}</a></td>
+      <td data-label="ชื่อ">{{ s.first_name }} {{ s.last_name }}</td>
+      <td data-label="หลักสูตร">{{ s.curriculum_id }}</td>
+      <td class="num" data-label="ปีเข้า">{{ s.entry_year }}</td>
+      <td class="num" data-label="หน่วยกิต">{{ s.credits }}</td>
+      <td data-label="บัญชี">{% if s.username %}{{ ui.tag('ok' if s.is_active else 'muted', s.username ~ ('' if s.is_active else ' (ปิด)')) }}
+          {% else %}<span class="muted">ยังไม่มี</span>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="6">{{ ui.empty('ไม่พบนักศึกษาตามคำค้น', 'search') }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <p class="sub" style="padding: var(--s3) var(--s5)">แสดงไม่เกิน 200 คน · นักศึกษาจำลองหลักสูตร EXT (F0001…) อยู่ท้ายรายการ</p>
+</section>
+
+<section class="card" id="new-student" aria-labelledby="new-h">
+  {{ ui.card_head('เพิ่มนักศึกษา', (), 'ใส่รหัสผ่านด้วยถ้าต้องการสร้างบัญชีผู้ใช้ไปพร้อมกัน (ชื่อผู้ใช้ = รหัสนักศึกษา)', 'plus', id='new-h') }}
+  <form method="post" action="{{ url_for('admin.student_new') }}">
     {{ csrf_field() }}
-    <input name="student_id" required placeholder="รหัสนักศึกษา">
-    <input name="first_name" required placeholder="ชื่อ">
-    <input name="last_name" required placeholder="นามสกุล">
-    <select name="curriculum_id">{% for c in curricula %}<option>{{ c.curriculum_id }}</option>{% endfor %}</select>
-    ปีเข้า <input class="short" type="number" name="entry_year" required placeholder="2569">
-    <input type="password" name="password" placeholder="รหัสผ่าน (ไม่ใส่ = ยังไม่สร้างบัญชี)" autocomplete="new-password">
-    <button class="btn primary">เพิ่ม</button>
+    <div class="form-grid">
+      <div class="field"><label for="s-id">รหัสนักศึกษา <span class="req" aria-hidden="true">*</span></label><input id="s-id" name="student_id" required inputmode="numeric"></div>
+      <div class="field"><label for="s-fn">ชื่อ <span class="req" aria-hidden="true">*</span></label><input id="s-fn" name="first_name" required></div>
+      <div class="field"><label for="s-ln">นามสกุล <span class="req" aria-hidden="true">*</span></label><input id="s-ln" name="last_name" required></div>
+      <div class="field"><label for="s-cur">หลักสูตร</label>
+        <select id="s-cur" name="curriculum_id">{% for c in curricula %}<option>{{ c.curriculum_id }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="s-year">ปีที่เข้า (พ.ศ.) <span class="req" aria-hidden="true">*</span></label><input id="s-year" type="number" name="entry_year" required placeholder="2569"></div>
+      <div class="field"><label for="s-pw">รหัสผ่าน</label>
+        <input id="s-pw" type="password" name="password" autocomplete="new-password" aria-describedby="s-pw-help">
+        <span class="help" id="s-pw-help">อย่างน้อย 8 ตัวอักษร · เว้นว่าง = ยังไม่สร้างบัญชี</span></div>
+    </div>
+    <div class="form-actions"><button class="btn primary">{{ ui.icon('plus', 'i-sm') }}เพิ่มนักศึกษา</button></div>
   </form>
 </section>
 {% endblock %}

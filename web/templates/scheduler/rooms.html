@@ -1,27 +1,48 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% block title %}ห้อง{% endblock %}
 {% block content %}
-<h1>R8 การใช้ห้องเรียนในภาคปัจจุบัน</h1>
-<p class="sub">ความจุห้องใช้ตรวจห้องสอบ (เว้นว่าง = ไม่ทราบ ระบบจะไม่ตรวจความจุ)</p>
+{{ ui.page_header('ห้องเรียนและการใช้ห้อง', 'ภาคเรียนปัจจุบัน · ความจุห้องใช้ตรวจห้องสอบ (ไม่ทราบความจุ = ระบบจะไม่ตรวจ)', codes=('R8',)) }}
+
+<section class="card" aria-labelledby="tt-h">
+  {% call ui.card_head('ตารางการใช้ห้อง ' ~ (selected or ''), (), None, 'grid', id='tt-h') %}
+    <form class="form-row" aria-label="เลือกห้อง">
+      <div class="field"><label for="room" class="sr-only">เลือกห้อง</label>
+        <select id="room" name="room" onchange="this.form.requestSubmit()">
+          {% for r in rooms %}<option value="{{ r.room_code }}" {{ 'selected' if r.room_code == selected }}>{{ r.room_code }} · {{ usage[r.room_code]|length }} คาบ</option>{% endfor %}
+        </select></div>
+      <noscript><button class="btn">แสดง</button></noscript>
+    </form>
+  {% endcall %}
+  {{ ui.timetable(tt, 'ห้องนี้ว่างทั้งสัปดาห์', 'ตารางการใช้ห้อง ' ~ (selected or '')) }}
+</section>
+
 {% if g.user.role == 'scheduler' %}
-<section class="card">
-  <h2>เพิ่มห้อง / แก้ความจุ</h2>
-  <form method="post" class="inline" action="{{ url_for('scheduler.room_save') }}">
-    {{ csrf_field() }}<input name="room_code" required placeholder="รหัสห้อง">
-    ความจุ <input class="short" type="number" min="1" name="capacity"> คน <button class="btn primary">บันทึก</button>
+<section class="card" aria-labelledby="add-h">
+  {{ ui.card_head('เพิ่มห้อง / แก้ความจุ', (), 'ใส่รหัสห้องที่มีอยู่แล้วเพื่อแก้ความจุ', 'door', id='add-h') }}
+  <form method="post" class="form-row" action="{{ url_for('scheduler.room_save') }}">
+    {{ csrf_field() }}
+    <div class="field"><label for="rc">รหัสห้อง <span class="req" aria-hidden="true">*</span></label><input id="rc" name="room_code" required></div>
+    <div class="field"><label for="cap">ความจุ (คน)</label><input id="cap" class="short" type="number" min="1" name="capacity"></div>
+    <button class="btn primary">บันทึก</button>
   </form>
 </section>
 {% endif %}
-<div class="grid">
-{% for r in rooms %}
-  <section class="card">
-    <h2>{{ r.room_code }} <span class="empty">{{ ('จุ ' ~ r.capacity ~ ' คน') if r.capacity else 'ไม่ทราบความจุ' }}</span></h2>
-    {% if usage[r.room_code] %}
-    <table>{% for u in usage[r.room_code] %}
-      <tr><td>{{ u.day }}</td><td>{{ u.time }}</td><td>{{ u.course_code }} กลุ่ม {{ u.section_no }}</td></tr>{% endfor %}
-    </table>
-    {% else %}<p class="empty">ว่างทั้งสัปดาห์</p>{% endif %}
-  </section>
-{% endfor %}
-</div>
+
+<section class="card flush" aria-labelledby="list-h">
+  {{ ui.card_head('ห้องทั้งหมด', (), None, 'door', id='list-h') }}
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">ห้อง</th><th scope="col">ความจุ</th><th scope="col">คาบที่ใช้ในสัปดาห์</th><th scope="col" class="actions"><span class="sr-only">ดูตาราง</span></th></tr></thead>
+    <tbody>
+    {% for r in rooms %}
+    <tr {% if r.room_code == selected %}class="mine"{% endif %}>
+      <td class="primary-cell"><strong>{{ r.room_code }}</strong></td>
+      <td data-label="ความจุ">{{ (r.capacity ~ ' คน') if r.capacity else 'ไม่ทราบ' }}</td>
+      <td data-label="คาบ">{% for u in usage[r.room_code] %}<span class="nowrap">{{ u.day }} {{ u.time }} {{ u.course_code }} ({{ u.section_no }})</span>{% if not loop.last %} · {% endif %}{% else %}<span class="muted">ว่างทั้งสัปดาห์</span>{% endfor %}</td>
+      <td class="actions" data-label=""><a class="btn sm" href="{{ url_for('scheduler.rooms', room=r.room_code) }}">ดูตาราง</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
 {% endblock %}

@@ -71,6 +71,9 @@ ER diagram (21 ตาราง), README, `registration.db`, CSV, Excel, ตร�
 | ข้อ 1–5 ฐานข้อมูล กฎ demo รายงาน หน้าเว็บ ชุดทดสอบ 25 ข้อ | เสร็จ | `feature/three-roles` |
 | ตรวจความปลอดภัย (`security-review`) | เสร็จ ไม่พบช่องโหว่ระดับสูง ข้อสังเกต: รหัสผ่านทดสอบใน seed และ debug mode ใช้สาธิตในเครื่องเท่านั้น | `feature/three-roles` |
 | ข้อ 6 ER diagram 21 ตาราง, README, `registration.db`, CSV, Excel | เสร็จ | `docs/three-roles` |
+| UX/UI ใหม่ (23 พ.ย.): ฐานดีไซน์ light/dark, หน้านักศึกษา, ฝ่ายทะเบียน, ผู้จัดตาราง, ตรวจ contrast/คีย์บอร์ด/มือถือ | เสร็จ | `ui/foundation` → `ui/student` → `ui/admin` → `ui/scheduler` → `ui/polish` |
 
 ## 7. นอกขอบเขตรอบนี้
-UX/UI ใหม่ · เวลาว่างของอาจารย์และการล็อกวิชาส่วนกลาง (มีร่างใน `archive/v2/`) · ระบบสำหรับอาจารย์ทั่วไป (ดูรายชื่อนักศึกษา) · ช่วงเพิ่ม-ถอนแยกจากช่วงลงทะเบียน
+เวลาว่างของอาจารย์และการล็อกวิชาส่วนกลาง (มีร่างใน `archive/v2/`) · ระบบสำหรับอาจารย์ทั่วไป (ดูรายชื่อนักศึกษา)
+
+(ช่วงเพิ่ม/ลดวิชาที่แยกจากช่วงลงทะเบียน ทำแล้วใน branch `ui/reg-parity`: คอลัมน์ `term.add_*`, `term.drop_*`, view `v_term_status.can_add/can_drop`, demo D19)

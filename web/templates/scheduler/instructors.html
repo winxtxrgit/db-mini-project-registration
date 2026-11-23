@@ -1,13 +1,38 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% block title %}อาจารย์{% endblock %}
+{% set sel = load|selectattr('instructor_id', 'equalto', selected)|first %}
 {% block content %}
-<h1>R9 ภาระสอนของอาจารย์ในภาคปัจจุบัน</h1>
-<div class="card table-scroll">
-  <table>
-    <tr><th>อาจารย์</th><th class="num">กลุ่มเรียน</th><th class="num">ชั่วโมง/สัปดาห์</th><th>วิชา</th></tr>
+{{ ui.page_header('ภาระสอนของอาจารย์', 'ภาคเรียนปัจจุบัน · ระบบกันไม่ให้อาจารย์สอนสองที่ในเวลาเดียวกัน', codes=('R9',)) }}
+
+<section class="card" aria-labelledby="tt-h">
+  {% call ui.card_head('ตารางสอน ' ~ (sel.full_name if sel else ''), (), None, 'grid', id='tt-h') %}
+    <form class="form-row" aria-label="เลือกอาจารย์">
+      <div class="field"><label for="ins" class="sr-only">เลือกอาจารย์</label>
+        <select id="ins" name="instructor" onchange="this.form.requestSubmit()">
+          {% for r in load %}<option value="{{ r.instructor_id }}" {{ 'selected' if r.instructor_id == selected }}>{{ r.full_name }} · {{ r.sections }} กลุ่ม</option>{% endfor %}
+        </select></div>
+      <noscript><button class="btn">แสดง</button></noscript>
+    </form>
+  {% endcall %}
+  {{ ui.timetable(tt, 'อาจารย์ท่านนี้ยังไม่มีคาบสอนในภาคนี้', 'ตารางสอน') }}
+</section>
+
+<section class="card flush" aria-labelledby="load-h">
+  {{ ui.card_head('ภาระสอนรายคน', (), None, 'user', id='load-h') }}
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">อาจารย์</th><th scope="col" class="num">กลุ่มเรียน</th><th scope="col" class="num">ชั่วโมง/สัปดาห์</th><th scope="col">วิชา</th><th scope="col" class="actions"><span class="sr-only">ดูตาราง</span></th></tr></thead>
+    <tbody>
     {% for r in load %}
-    <tr><td>{{ r.full_name }}</td><td class="num">{{ r.sections }}</td><td class="num">{{ '%.1f'|format(r.hours_per_week) }}</td><td>{{ r.courses or '-' }}</td></tr>
+    <tr {% if r.instructor_id == selected %}class="mine"{% endif %}>
+      <td class="primary-cell"><strong>{{ r.full_name }}</strong></td>
+      <td class="num" data-label="กลุ่มเรียน">{{ r.sections }}</td>
+      <td class="num" data-label="ชั่วโมง/สัปดาห์">{{ '%.1f'|format(r.hours_per_week) }}</td>
+      <td data-label="วิชา">{{ (r.courses or '–')|replace(',', ', ') }}</td>
+      <td class="actions" data-label=""><a class="btn sm" href="{{ url_for('scheduler.instructors', instructor=r.instructor_id) }}">ดูตาราง</a></td>
+    </tr>
     {% endfor %}
-  </table>
-</div>
+    </tbody>
+  </table></div>
+</section>
 {% endblock %}

@@ -1,19 +1,29 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% set ENTITY = {'MEETING': ('เวลาเรียน', 'clock'), 'EXAM': ('เวลาสอบ', 'calendar'), 'INSTRUCTOR': ('อาจารย์', 'user')} %}
+{% set ACTION = {'ADD': ('ok', 'เพิ่ม', 'plus'), 'CHANGE': ('warn', 'แก้', 'history'), 'REMOVE': ('bad', 'ลบ', 'trash')} %}
 {% block title %}ประวัติการแก้ตาราง{% endblock %}
 {% block content %}
-<h1>ประวัติการแก้ตาราง</h1>
-<p class="sub">schedule_log บันทึกโดย trigger ทุกครั้งที่เพิ่ม แก้ หรือลบ เวลาเรียน เวลาสอบ และอาจารย์ผู้สอน (วัน 1 = จันทร์) · ล่าสุด 300 รายการ</p>
-<div class="card table-scroll">
+{{ ui.page_header('ประวัติการแก้ตาราง', 'บันทึกโดย trigger ทุกครั้งที่เพิ่ม แก้ หรือลบ เวลาเรียน เวลาสอบ และอาจารย์ผู้สอน (วัน 1 = จันทร์) · ล่าสุด 300 รายการ') }}
+<section class="card flush">
   {% if logs %}
-  <table>
-    <tr><th class="num">#</th><th>เวลา</th><th>วิชา</th><th>เรื่อง</th><th>รายการ</th><th>รายละเอียด</th><th>ผู้ทำ</th></tr>
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col" class="num">#</th><th scope="col">เวลา</th><th scope="col">วิชา</th><th scope="col">เรื่อง</th><th scope="col">รายการ</th><th scope="col">รายละเอียด</th><th scope="col">ผู้ทำ</th></tr></thead>
+    <tbody>
     {% for r in logs %}
-    <tr><td class="num">{{ r.log_id }}</td><td>{{ r.logged_at }}</td><td>{{ r.course_code }} กลุ่ม {{ r.section_no }}</td>
-      <td>{{ {'MEETING':'เวลาเรียน','EXAM':'เวลาสอบ','INSTRUCTOR':'อาจารย์'}[r.entity] }}</td>
-      <td><span class="tag {{ {'ADD':'ok','CHANGE':'warn','REMOVE':'bad'}[r.action] }}">{{ r.action }}</span></td>
-      <td>{{ r.detail }}</td><td>{{ r.actor }}</td></tr>
+    {% set ek, eic = ENTITY[r.entity] %}{% set ak, atext, aic = ACTION[r.action] %}
+    <tr>
+      <td class="num muted" data-label="#">{{ r.log_id }}</td>
+      <td class="nowrap" data-label="เวลา">{{ r.logged_at|thdatetime }}</td>
+      <td class="primary-cell"><span class="code">{{ r.course_code }}</span> กลุ่ม {{ r.section_no }}</td>
+      <td data-label="เรื่อง"><span class="row nowrap">{{ ui.icon(eic, 'i-sm') }}{{ ek }}</span></td>
+      <td data-label="รายการ">{{ ui.tag(ak, atext, aic) }}</td>
+      <td data-label="รายละเอียด">{{ r.detail|thdate }}</td>
+      <td data-label="ผู้ทำ">{{ r.actor }}</td>
+    </tr>
     {% endfor %}
-  </table>
-  {% else %}<p class="empty">ยังไม่มีการแก้ตาราง</p>{% endif %}
-</div>
+    </tbody>
+  </table></div>
+  {% else %}<div class="card-pad" style="padding-top: var(--s5)">{{ ui.empty('ยังไม่มีการแก้ตาราง', 'history') }}</div>{% endif %}
+</section>
 {% endblock %}

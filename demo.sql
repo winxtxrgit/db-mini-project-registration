@@ -120,3 +120,21 @@ SELECT student_id, priority, requested_at, credits_ok FROM v_waitlist_rank WHERE
 DELETE FROM enrollment WHERE student_id = 'F0002' AND section_id = 1;
 UPDATE term SET max_credits = 22 WHERE term_id = '2569-2';
 SELECT student_id, action FROM registration_log WHERE section_id = 1 ORDER BY log_id DESC LIMIT 2;
+
+.print ''
+.print '--- D19 ช่วงลดวิชาแยกจากช่วงลงทะเบียน (ตามปฏิทินการศึกษาจริง): ปิดช่วงลงทะเบียน เปิดเฉพาะช่วงลดวิชา'
+.print '    6799000005 ถอน 310-2309 เอง: ผ่าน / ลงกลับเอง: ควรผิด / เปิดช่วงเพิ่มวิชาแล้วลงใหม่: ผ่าน'
+UPDATE term SET reg_close_at = '2026-11-01 00:00', drop_open_at = '2026-11-01 00:00', drop_close_at = '2099-12-31 23:59'
+ WHERE term_id = '2569-2';
+SELECT term_id, reg_is_open, add_is_open, drop_is_open, can_add, can_drop FROM v_term_status WHERE term_id = '2569-2';
+INSERT INTO app_session VALUES (1, (SELECT user_id FROM app_user WHERE username = '6799000005'));
+DELETE FROM enrollment WHERE student_id = '6799000005' AND section_id = 3;
+INSERT INTO enrollment (student_id, section_id) VALUES ('6799000005', 3);
+UPDATE term SET add_open_at = '2026-11-01 00:00', add_close_at = '2099-12-31 23:59' WHERE term_id = '2569-2';
+INSERT INTO enrollment (student_id, section_id) VALUES ('6799000005', 3);
+DELETE FROM app_session;
+UPDATE term SET reg_close_at = '2027-01-15 23:59', add_open_at = NULL, add_close_at = NULL,
+                drop_open_at = NULL, drop_close_at = NULL WHERE term_id = '2569-2';
+SELECT l.student_id, s.course_code, l.action, u.username AS actor
+FROM registration_log l JOIN section s ON s.section_id = l.section_id LEFT JOIN app_user u ON u.user_id = l.actor_user_id
+WHERE l.student_id = '6799000005' ORDER BY l.log_id DESC LIMIT 2;

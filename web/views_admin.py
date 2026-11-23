@@ -53,12 +53,13 @@ def _datetime_or_none(name: str):
 @require("admin")
 def term_update(term_id):
     try:
-        params = (_datetime_or_none("reg_open_at"), _datetime_or_none("reg_close_at"),
-                  form_int("max_credits"), term_id)
+        params = tuple(_datetime_or_none(f"{w}_{e}_at") for w in ("reg", "add", "drop") for e in ("open", "close")) \
+            + (form_int("max_credits"), term_id)
     except ValueError as exc:
         flash(f"ไม่สำเร็จ: {exc}", "error")
         return back("admin.terms")
-    write([("UPDATE term SET reg_open_at = ?, reg_close_at = ?, max_credits = ? WHERE term_id = ?", params)],
+    write([("UPDATE term SET reg_open_at = ?, reg_close_at = ?, add_open_at = ?, add_close_at = ?, "
+            "drop_open_at = ?, drop_close_at = ?, max_credits = ? WHERE term_id = ?", params)],
           f"บันทึกภาคเรียน {term_id} แล้ว")
     return back("admin.terms")
 
@@ -107,11 +108,11 @@ def section_capacity(section_id):
         cap = form_int("capacity")
     except ValueError as exc:
         flash(f"ไม่สำเร็จ: {exc}", "error")
-        return back("admin.sections")
+        return back("admin.sections", _anchor=f"sec{section_id}")
     write([("UPDATE section SET capacity = ? WHERE section_id = ?", (cap, section_id)),
            promote_waitlist(section_id)],
           f"ตั้งจำนวนรับ {section_label(section_id)} เป็น {cap} แล้ว")
-    return back("admin.sections")
+    return back("admin.sections", _anchor=f"sec{section_id}")
 
 
 @bp.post("/sections/<int:section_id>/quota")
@@ -132,16 +133,16 @@ def section_quota(section_id):
             msg = f"ตั้งโควตา {curriculum} ของ {section_label(section_id)} เป็น {n} ที่แล้ว"
     except ValueError as exc:
         flash(f"ไม่สำเร็จ: {exc}", "error")
-        return back("admin.sections")
+        return back("admin.sections", _anchor=f"sec{section_id}")
     write([step, promote_waitlist(section_id)], msg)
-    return back("admin.sections")
+    return back("admin.sections", _anchor=f"sec{section_id}")
 
 
 @bp.post("/sections/<int:section_id>/promote")
 @require("admin")
 def section_promote(section_id):
     write([promote_waitlist(section_id)], f"ตรวจคิวของ {section_label(section_id)} แล้ว")
-    return back("admin.sections")
+    return back("admin.sections", _anchor=f"sec{section_id}")
 
 
 @bp.post("/waitlist/<sid>/<int:section_id>/remove")
@@ -149,7 +150,7 @@ def section_promote(section_id):
 def waitlist_remove(sid, section_id):
     write([("DELETE FROM waitlist WHERE student_id = ? AND section_id = ?", (sid, section_id))],
           f"เอา {sid} ออกจากคิว {section_label(section_id)} แล้ว")
-    return back("admin.sections")
+    return back("admin.sections", _anchor=f"sec{section_id}")
 
 
 # ------------------------------------------------------------------ นักศึกษา
@@ -195,7 +196,7 @@ def student_act(sid, action, section_id):
     if action not in ACTIONS:
         abort(404)
     ACTIONS[action](sid, section_id)
-    return redirect(url_for("admin.student_view", sid=sid) + "#register")
+    return redirect(url_for("admin.student_view", sid=sid, _anchor=f"sec{section_id}"))
 
 
 @bp.route("/credits")
@@ -271,6 +272,9 @@ def log():
 @bp.post("/reset")
 @require("admin")
 def reset():
+    if request.form.get("confirm", "").strip() != "รีเซ็ต":     # กันกดโดยไม่ตั้งใจ (หน้าเว็บบังคับไว้แล้วอีกชั้น)
+        flash("ไม่สำเร็จ: พิมพ์คำว่า รีเซ็ต เพื่อยืนยันก่อน", "error")
+        return back("admin.dashboard")
     close_db()
     build_db()
     flash("รีเซ็ตฐานข้อมูลกลับเป็นข้อมูลตั้งต้นแล้ว", "ok")

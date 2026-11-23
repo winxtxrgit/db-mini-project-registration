@@ -1,0 +1,114 @@
+{# macro กลางของทุกหน้า · ใช้ {% import "_ui.html" as ui %} #}
+
+{% macro icon(name, cls='') -%}
+<svg class="i {{ cls }}" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"/></svg>
+{%- endmacro %}
+
+{# ป้ายสถานะ: kind = ok | bad | warn | info | muted · ข้อความต้องสื่อความหมายเองได้ ไม่พึ่งสีอย่างเดียว #}
+{% macro tag(kind, text, ic=None) -%}
+<span class="tag {{ kind }}">{% if ic %}{{ icon(ic) }}{% endif %}{{ text }}</span>
+{%- endmacro %}
+
+{# รหัสรายงานใน queries.sql (R1–R9) แสดงเป็นป้ายเล็ก ให้ผู้ตรวจงานอ้างอิงได้ #}
+{% macro rcode() -%}
+{% for c in varargs %}<abbr class="rcode" title="รายงาน {{ c }} ใน queries.sql">{{ c }}</abbr>{% if not loop.last %} {% endif %}{% endfor %}
+{%- endmacro %}
+
+{% macro page_header(title, sub=None, back=None, back_label='กลับ', codes=()) -%}
+<div class="ph">
+  <div>
+    {% if back %}<a class="crumb" href="{{ back }}">{{ icon('back', 'i-sm') }}{{ back_label }}</a>{% endif %}
+    <h1>{{ title }}{% for c in codes %} {{ rcode(c) }}{% endfor %}</h1>
+    {% if sub %}<p class="sub">{{ sub }}</p>{% endif %}
+  </div>
+  {% if caller is defined %}<div class="ph-actions">{{ caller() }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro card_head(title, codes=(), sub=None, ic=None, id=None) -%}
+<div class="card-head">
+  <h2 {% if id %}id="{{ id }}"{% endif %}>{% if ic %}{{ icon(ic) }}{% endif %}{{ title }}{% for c in codes %} {{ rcode(c) }}{% endfor %}</h2>
+  {% if caller is defined %}<div class="spacer">{{ caller() }}</div>{% endif %}
+  {% if sub %}<p class="sub">{{ sub }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# ตัวเลขสรุป · kind ใส่แถบสีด้านซ้าย · href ทำให้ทั้งกล่องกดได้ #}
+{% macro stat(label, value, hint='', kind='', href='', ic='', unit='', text=False) -%}
+{% set tagname = 'a' if href else 'div' %}
+<{{ tagname }} class="stat {{ kind }}" {% if href %}href="{{ href }}"{% endif %}>
+  <span class="label">{% if ic %}{{ icon(ic, 'i-sm') }}{% endif %}{{ label }}</span>
+  <span class="value {{ 'text' if text }}">{{ value }}{% if unit %} <small>{{ unit }}</small>{% endif %}</span>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+  {% if hint %}<span class="hint">{{ hint }}</span>{% endif %}
+</{{ tagname }}>
+{%- endmacro %}
+
+{# แถบปริมาณพร้อมตัวเลข · kind อัตโนมัติ: เต็มแล้ว = warn (หรือส่ง kind มาเอง) #}
+{% macro meter(value, max, label='', kind=None, cls='') -%}
+{% set v = value or 0 %}{% set m = max or 0 %}
+{% set pct = ((v / m * 100) if m else 0) %}
+{% set k = kind if kind is not none else ('warn' if m and v >= m else '') %}
+<div class="meter {{ k }} {{ cls }}" role="img" aria-label="{{ label ~ ' ' if label }}{{ v }} จาก {{ m }}">
+  <div class="meter-bar"><div class="meter-fill" style="width: {{ [pct, 100]|min|round(1) }}%"></div></div>
+  <span class="meter-text" aria-hidden="true"><b>{{ v }}</b>/{{ m }}{% if label %} {{ label }}{% endif %}</span>
+</div>
+{%- endmacro %}
+
+{% macro empty(msg, ic='info') -%}
+<p class="empty row">{{ icon(ic, 'i-sm') }}{{ msg }}</p>
+{%- endmacro %}
+
+{# ปุ่มที่ส่ง POST พร้อม CSRF #}
+{% macro action_form(url, label, cls='btn sm', ic=None, title='', aria=None, hint=None) -%}
+<form method="post" class="inline" action="{{ url }}">{{ csrf_field() }}<button class="{{ cls }}" {% if title %}title="{{ title }}"{% endif %} {% if aria %}aria-label="{{ aria }}"{% endif %}>{% if ic %}{{ icon(ic, 'i-sm') }}{% endif %}{{ label }}{% if hint %}<span class="hint">{{ hint }}</span>{% endif %}</button></form>
+{%- endmacro %}
+
+{# ช่องค้นหาสำหรับตัวกรองฝั่ง client (ต้องอยู่ใน data-filter-scope) #}
+{% macro filter_search(placeholder='ค้นหา', label='ค้นหา', id='q') -%}
+<div class="search js-only">
+  {{ icon('search', 'i-sm') }}
+  <label class="sr-only" for="{{ id }}">{{ label }}</label>
+  <input id="{{ id }}" type="search" data-filter-text placeholder="{{ placeholder }}" autocomplete="off">
+</div>
+{%- endmacro %}
+
+{# ชิปตัวกรอง · items = [(key, label, count|None), ...] #}
+{% macro filter_chips(items, label='ตัวกรอง') -%}
+<div class="chips js-only" role="group" aria-label="{{ label }}">
+  {% for key, text, count in items %}
+  <button type="button" class="chip" data-filter-chip="{{ key }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ text }}{% if count is not none %} <span class="count">{{ count }}</span>{% endif %}</button>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{# ตารางเรียนรายสัปดาห์ จาก core.timetable() · จอแคบแสดงเป็นรายการแยกตามวัน #}
+{% macro timetable(tt, empty_msg='ยังไม่มีคาบเรียน', label='ตารางเรียนรายสัปดาห์') -%}
+{% if tt.empty %}
+  {{ empty(empty_msg, 'calendar') }}
+{% else %}
+<div class="tt" style="--rows: {{ tt.rows }}; --cols: {{ tt.days|length }}" role="img" aria-label="{{ label }} (รายละเอียดอยู่ในรายการด้านล่าง)">
+  <div class="tt-corner"></div>
+  {% for dow, name in tt.days %}<div class="tt-day" style="grid-column: {{ loop.index + 1 }}">{{ name }}</div>{% endfor %}
+  {% for dow, name in tt.days %}<div class="tt-col" style="grid-column: {{ loop.index + 1 }}"></div>{% endfor %}
+  {% for row, text, half in tt.lines %}
+    {% if not half %}<div class="tt-hour" style="grid-row: {{ row }}">{{ text }}</div>{% endif %}
+    <div class="tt-line {{ 'half' if half }}" style="grid-row: {{ row }}"></div>
+  {% endfor %}
+  {% for b in tt.blocks %}
+  <div class="tt-block {{ 'clash' if b.clash else 'c' ~ b.tone }}" style="grid-column: {{ b.col }}; grid-row: {{ b.row }} / span {{ b.span }}" title="{{ b.title }} · {{ b.time }}{{ ' · ' ~ b.sub if b.sub }}">
+    <b>{{ b.code }}</b><span>{{ b.time }}</span>{% if b.sub %}<span>{{ b.sub }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+<div class="tt-list">
+  {% for name, items in tt.by_day %}
+  <h3>{{ name }}</h3>
+  <ul>{% for b in items %}<li class="{{ 'clash' if b.clash }}"><span class="t">{{ b.time }}</span> {{ b.code }} {{ b.title }}{% if b.sub %} · {{ b.sub }}{% endif %}{% if b.clash %} · <strong>เวลาชน</strong>{% endif %}</li>{% endfor %}</ul>
+  {% endfor %}
+</div>
+<ul class="sr-only tt-sr">
+  {% for name, items in tt.by_day %}{% for b in items %}<li>{{ name }} {{ b.time }} {{ b.code }} {{ b.title }}{% if b.sub %} {{ b.sub }}{% endif %}{% if b.clash %} เวลาชน{% endif %}</li>{% endfor %}{% endfor %}
+</ul>
+{% endif %}
+{%- endmacro %}

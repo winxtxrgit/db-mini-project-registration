@@ -1,96 +1,139 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% set can_edit = g.user.role == 'scheduler' %}
-{% macro day_select(selected=None) -%}
-  <select name="day_of_week">{% for d, name in DAYS.items() %}<option value="{{ d }}" {{ 'selected' if d == selected }}>{{ name }}</option>{% endfor %}</select>
+{% macro day_select(id, selected=None) -%}
+  <select id="{{ id }}" name="day_of_week">{% for d, name in DAYS.items() %}<option value="{{ d }}" {{ 'selected' if d == selected }}>{{ name }}</option>{% endfor %}</select>
 {%- endmacro %}
-{% macro room_select(selected=None) -%}
-  <select name="room_code"><option value="">ไม่ระบุห้อง</option>
-    {% for r in rooms %}<option value="{{ r.room_code }}" {{ 'selected' if r.room_code == selected }}>{{ r.room_code }}{% if r.capacity %} ({{ r.capacity }}){% endif %}</option>{% endfor %}</select>
+{% macro room_select(id, selected=None) -%}
+  <select id="{{ id }}" name="room_code"><option value="">ไม่ระบุห้อง</option>
+    {% for r in rooms %}<option value="{{ r.room_code }}" {{ 'selected' if r.room_code == selected }}>{{ r.room_code }}{% if r.capacity %} (จุ {{ r.capacity }}){% endif %}</option>{% endfor %}</select>
 {%- endmacro %}
+{#- ช่องเวลา: type=time ส่งค่า HH:MM เสมอ ส่วน pattern ใช้กับ browser ที่ไม่รองรับ type=time -#}
+{% macro time_field(id, name, label, value='', required=False) -%}
+  <div class="field"><label for="{{ id }}">{{ label }}</label>
+    <input id="{{ id }}" class="time" type="time" name="{{ name }}" value="{{ value }}" step="60" pattern="[0-2][0-9]:[0-5][0-9]" {{ 'required' if required }}></div>
+{%- endmacro %}
+{% set n_noteacher = sections|rejectattr('section_id', 'in', teachers.keys()|list)|list|length %}
+{% set n_nomeet = sections|rejectattr('section_id', 'in', meetings.keys()|list)|list|length %}
+{% set n_noexam = sections|rejectattr('section_id', 'in', exams.keys()|list)|list|length %}
 {% block title %}จัดตาราง{% endblock %}
 {% block content %}
-<h1>ตารางเรียนและตารางสอบ · ภาคเรียน {{ term.term_id }}</h1>
-<p class="sub">ทุกการแก้ไขถูกตรวจโดย trigger: ห้องซ้ำ (ยกเว้นกลุ่มของวิชาเดียวกันเรียนรวม), อาจารย์สอนสองที่, นักศึกษาที่ลงแล้วเรียน/สอบชน, ห้องสอบจุไม่พอ
-  {% if not can_edit %}<br><span class="tag info">ฝ่ายทะเบียนดูได้อย่างเดียว การแก้ไขทำโดยผู้จัดตาราง</span>{% endif %}</p>
+{{ ui.page_header('ตารางเรียนและตารางสอบ', 'ภาคเรียน ' ~ term.term_id ~ ' · ทุกการแก้ไขถูกตรวจโดย trigger: ห้องซ้ำ (ยกเว้นกลุ่มของวิชาเดียวกันเรียนรวม), อาจารย์สอนสองที่, นักศึกษาที่ลงแล้วเรียน/สอบชน, ห้องสอบจุไม่พอ') }}
+{% if not can_edit %}<div class="banner">{{ ui.icon('eye') }}<span>ฝ่ายทะเบียน<strong>ดูได้อย่างเดียว</strong> · การแก้ไขทำโดยผู้จัดตาราง</span></div>{% endif %}
 
-{% for s in sections %}
-<section class="card" id="sec{{ s.section_id }}">
-  <h2>{{ s.course_code }} {{ s.name_th }} · กลุ่ม {{ s.section_no }} <span class="empty">(ลงแล้ว {{ s.enrolled }}/{{ s.capacity }})</span></h2>
+<div data-filter-scope>
+  <div class="toolbar">
+    {{ ui.filter_search('ค้นหารหัสหรือชื่อวิชา', 'ค้นหากลุ่มเรียน', 'q-sec') }}
+    {{ ui.filter_chips([('all', 'ทั้งหมด', sections|length), ('noteacher', 'ยังไม่มีอาจารย์', n_noteacher),
+                        ('nomeet', 'ยังไม่มีเวลาเรียน', n_nomeet), ('noexam', 'ยังไม่มีวันสอบ', n_noexam)], 'กรองกลุ่มเรียน') }}
+    <span class="sr-only" data-filter-status aria-live="polite"></span>
+  </div>
 
-  <h3>อาจารย์ผู้สอน</h3>
-  {% for t in teachers[s.section_id] %}
-    <span class="tag info">{{ t.full_name }}</span>
-    {% if can_edit %}<form method="post" class="inline" action="{{ url_for('scheduler.instructor_remove', section_id=s.section_id, instructor_id=t.instructor_id) }}">
-      {{ csrf_field() }}<button class="btn danger" title="ถอดออก">×</button></form>{% endif %}
-  {% else %}<span class="empty">ยังไม่มี</span>{% endfor %}
-  {% if can_edit %}
-  <form method="post" class="inline" action="{{ url_for('scheduler.instructor_add', section_id=s.section_id) }}">
-    {{ csrf_field() }}
-    <select name="instructor_id">{% for i in instructors %}<option value="{{ i.instructor_id }}">{{ i.full_name }}</option>{% endfor %}</select>
-    <button class="btn">มอบหมาย</button>
-  </form>{% endif %}
+  <div class="sec-list">
+  {% for s in sections %}
+  {% set ms = meetings[s.section_id] %}{% set xs = exams[s.section_id] %}{% set ts = teachers[s.section_id] %}
+  {% set tags = ['noteacher' if not ts, 'nomeet' if not ms, 'noexam' if not xs]|select|join(' ') %}
+  <details class="disclosure sec" id="sec{{ s.section_id }}" {{ 'open' if open_id == s.section_id }}
+           data-filter-item data-tags="{{ tags }}" data-text="{{ s.course_code }} {{ s.name_th }}">
+    <summary>
+      <span class="title"><span class="code">{{ s.course_code }}</span> {{ s.name_th }} · กลุ่ม {{ s.section_no }}</span>
+      <span class="meta">
+        {{ ui.meter(s.enrolled, s.capacity, 'คน') }}
+        <span class="nowrap">{{ ui.icon('clock', 'i-sm') }}</span>
+        {% for m in ms %}<span class="nowrap">{{ DAYS[m.day_of_week] }} {{ m.start_time }}–{{ m.end_time }}{% if m.room_code %} · {{ m.room_code }}{% endif %}</span>{% else %}{{ ui.tag('warn', 'ยังไม่มีเวลาเรียน', 'alert') }}{% endfor %}
+        {% if ts %}<span class="nowrap">{{ ui.icon('user', 'i-sm') }}</span>{{ ts|map(attribute='full_name')|join(', ') }}{% else %}{{ ui.tag('warn', 'ยังไม่มีอาจารย์', 'alert') }}{% endif %}
+        {% if not xs %}{{ ui.tag('muted', 'ยังไม่มีวันสอบ') }}{% endif %}
+      </span>
+      {{ ui.icon('chevron', 'chev') }}
+    </summary>
+    <div class="body">
+      {# ---------- อาจารย์ #}
+      <div class="block">
+        <h3>{{ ui.icon('user') }}อาจารย์ผู้สอน</h3>
+        <div class="row">
+          {% for t in ts %}
+            <span class="tag info">{{ t.full_name }}
+              {% if can_edit %}<form method="post" class="inline" action="{{ url_for('scheduler.instructor_remove', section_id=s.section_id, instructor_id=t.instructor_id) }}">{{ csrf_field() }}<button class="tag-x" aria-label="ถอด {{ t.full_name }} ออกจาก {{ s.course_code }} กลุ่ม {{ s.section_no }}">{{ ui.icon('x', 'i-sm') }}</button></form>{% endif %}
+            </span>
+          {% else %}<span class="muted">ยังไม่มี</span>{% endfor %}
+        </div>
+        {% if can_edit %}
+        <form method="post" class="form-row" style="margin-top: var(--s3)" action="{{ url_for('scheduler.instructor_add', section_id=s.section_id) }}">
+          {{ csrf_field() }}
+          <div class="field"><label for="ins{{ s.section_id }}">เพิ่มอาจารย์</label>
+            <select id="ins{{ s.section_id }}" name="instructor_id">{% for i in instructors %}<option value="{{ i.instructor_id }}">{{ i.full_name }}</option>{% endfor %}</select></div>
+          <button class="btn">{{ ui.icon('plus', 'i-sm') }}มอบหมาย</button>
+        </form>{% endif %}
+      </div>
 
-  <h3>เวลาเรียน</h3>
-  <div class="table-scroll"><table>
-    {% for m in meetings[s.section_id] %}
-    <tr><td>
-      {% if can_edit %}
-      <form method="post" class="inline" action="{{ url_for('scheduler.meeting_edit', meeting_id=m.meeting_id) }}">
-        {{ csrf_field() }}{{ day_select(m.day_of_week) }}
-        <input class="time" name="start_time" value="{{ m.start_time }}" pattern="[0-2][0-9]:[0-5][0-9]"> -
-        <input class="time" name="end_time" value="{{ m.end_time }}" pattern="[0-2][0-9]:[0-5][0-9]">
-        {{ room_select(m.room_code) }}
-        <button class="btn">บันทึก</button>
-      </form>
-      <form method="post" class="inline" action="{{ url_for('scheduler.meeting_delete', meeting_id=m.meeting_id) }}">
-        {{ csrf_field() }}<button class="btn danger">ลบ</button></form>
-      {% else %}{{ DAYS[m.day_of_week] }} {{ m.start_time }}-{{ m.end_time }} ห้อง {{ m.room_code or '-' }}{% endif %}
-    </td></tr>
-    {% else %}<tr><td class="empty">ยังไม่มีเวลาเรียน</td></tr>{% endfor %}
-    {% if can_edit %}
-    <tr><td>
-      <form method="post" class="inline" action="{{ url_for('scheduler.meeting_add', section_id=s.section_id) }}">
-        {{ csrf_field() }}{{ day_select() }}
-        <input class="time" name="start_time" placeholder="09:00" required pattern="[0-2][0-9]:[0-5][0-9]"> -
-        <input class="time" name="end_time" placeholder="12:00" required pattern="[0-2][0-9]:[0-5][0-9]">
-        {{ room_select() }}
-        <button class="btn primary">เพิ่มเวลาเรียน</button>
-      </form>
-    </td></tr>{% endif %}
-  </table></div>
+      {# ---------- เวลาเรียน #}
+      <div class="block">
+        <h3>{{ ui.icon('clock') }}เวลาเรียน</h3>
+        {% for m in ms %}
+          {% if can_edit %}
+          <div class="slot-row">
+            <form method="post" class="form-row" action="{{ url_for('scheduler.meeting_edit', meeting_id=m.meeting_id) }}">
+              {{ csrf_field() }}
+              <div class="field"><label for="d{{ m.meeting_id }}">วัน</label>{{ day_select('d' ~ m.meeting_id, m.day_of_week) }}</div>
+              {{ time_field('s' ~ m.meeting_id, 'start_time', 'เริ่ม', m.start_time) }}
+              {{ time_field('e' ~ m.meeting_id, 'end_time', 'จบ', m.end_time) }}
+              <div class="field"><label for="r{{ m.meeting_id }}">ห้อง</label>{{ room_select('r' ~ m.meeting_id, m.room_code) }}</div>
+              <button class="btn">บันทึก</button>
+            </form>
+            {{ ui.action_form(url_for('scheduler.meeting_delete', meeting_id=m.meeting_id), 'ลบ', 'btn danger', 'trash', aria='ลบคาบ ' ~ DAYS[m.day_of_week] ~ ' ' ~ m.start_time) }}
+          </div>
+          {% else %}
+          <p class="mb0">{{ DAYS[m.day_of_week] }} {{ m.start_time }}–{{ m.end_time }} · ห้อง {{ m.room_code or '–' }}</p>
+          {% endif %}
+        {% else %}<p class="muted">ยังไม่มีเวลาเรียน</p>{% endfor %}
+        {% if can_edit %}
+        <form method="post" class="form-row slot-row" action="{{ url_for('scheduler.meeting_add', section_id=s.section_id) }}">
+          {{ csrf_field() }}
+          <div class="field"><label for="nd{{ s.section_id }}">วัน</label>{{ day_select('nd' ~ s.section_id) }}</div>
+          {{ time_field('ns' ~ s.section_id, 'start_time', 'เริ่ม', required=True) }}
+          {{ time_field('ne' ~ s.section_id, 'end_time', 'จบ', required=True) }}
+          <div class="field"><label for="nr{{ s.section_id }}">ห้อง</label>{{ room_select('nr' ~ s.section_id) }}</div>
+          <button class="btn primary">{{ ui.icon('plus', 'i-sm') }}เพิ่มเวลาเรียน</button>
+        </form>{% endif %}
+      </div>
 
-  <h3>เวลาสอบ</h3>
-  <div class="table-scroll"><table>
-    {% for x in exams[s.section_id] %}
-    <tr><td>
-      <span class="tag muted">{{ x.exam_type }}</span>
-      {% if can_edit %}
-      <form method="post" class="inline" action="{{ url_for('scheduler.exam_edit', exam_id=x.exam_id) }}">
-        {{ csrf_field() }}
-        <input type="date" name="exam_date" value="{{ x.exam_date }}">
-        <input class="time" name="start_time" value="{{ x.start_time }}" pattern="[0-2][0-9]:[0-5][0-9]"> -
-        <input class="time" name="end_time" value="{{ x.end_time }}" pattern="[0-2][0-9]:[0-5][0-9]">
-        {{ room_select(x.room_code) }}
-        <button class="btn">บันทึก</button>
-      </form>
-      <form method="post" class="inline" action="{{ url_for('scheduler.exam_delete', exam_id=x.exam_id) }}">
-        {{ csrf_field() }}<button class="btn danger">ลบ</button></form>
-      {% else %}{{ x.exam_date }} {{ x.start_time }}-{{ x.end_time }} ห้อง {{ x.room_code or '-' }}{% endif %}
-    </td></tr>
-    {% else %}<tr><td class="empty">ยังไม่มีเวลาสอบ</td></tr>{% endfor %}
-    {% if can_edit and exams[s.section_id]|length < 2 %}
-    <tr><td>
-      <form method="post" class="inline" action="{{ url_for('scheduler.exam_add', section_id=s.section_id) }}">
-        {{ csrf_field() }}
-        <select name="exam_type"><option>FINAL</option><option>MIDTERM</option></select>
-        <input type="date" name="exam_date" required>
-        <input class="time" name="start_time" placeholder="09:00" required pattern="[0-2][0-9]:[0-5][0-9]"> -
-        <input class="time" name="end_time" placeholder="12:00" required pattern="[0-2][0-9]:[0-5][0-9]">
-        {{ room_select() }}
-        <button class="btn primary">เพิ่มเวลาสอบ</button>
-      </form>
-    </td></tr>{% endif %}
-  </table></div>
-</section>
-{% endfor %}
+      {# ---------- เวลาสอบ #}
+      <div class="block">
+        <h3>{{ ui.icon('calendar') }}เวลาสอบ</h3>
+        {% for x in xs %}
+          {% if can_edit %}
+          <div class="slot-row">
+            <form method="post" class="form-row" action="{{ url_for('scheduler.exam_edit', exam_id=x.exam_id) }}">
+              {{ csrf_field() }}
+              <div class="field"><span class="label">ประเภท</span>{{ ui.tag('muted', 'ปลายภาค' if x.exam_type == 'FINAL' else 'กลางภาค') }}</div>
+              <div class="field"><label for="xd{{ x.exam_id }}">วันที่</label><input id="xd{{ x.exam_id }}" type="date" name="exam_date" value="{{ x.exam_date }}"></div>
+              {{ time_field('xs' ~ x.exam_id, 'start_time', 'เริ่ม', x.start_time) }}
+              {{ time_field('xe' ~ x.exam_id, 'end_time', 'จบ', x.end_time) }}
+              <div class="field"><label for="xr{{ x.exam_id }}">ห้องสอบ</label>{{ room_select('xr' ~ x.exam_id, x.room_code) }}</div>
+              <button class="btn">บันทึก</button>
+            </form>
+            {{ ui.action_form(url_for('scheduler.exam_delete', exam_id=x.exam_id), 'ลบ', 'btn danger', 'trash', aria='ลบเวลาสอบ ' ~ x.exam_date) }}
+          </div>
+          {% else %}
+          <p class="mb0">{{ 'ปลายภาค' if x.exam_type == 'FINAL' else 'กลางภาค' }} · {{ x.exam_date|thdate }} {{ x.start_time }}–{{ x.end_time }} · ห้อง {{ x.room_code or '–' }}</p>
+          {% endif %}
+        {% else %}<p class="muted">ยังไม่มีเวลาสอบ</p>{% endfor %}
+        {% if can_edit and xs|length < 2 %}
+        <form method="post" class="form-row slot-row" action="{{ url_for('scheduler.exam_add', section_id=s.section_id) }}">
+          {{ csrf_field() }}
+          <div class="field"><label for="nxt{{ s.section_id }}">ประเภท</label>
+            <select id="nxt{{ s.section_id }}" name="exam_type"><option value="FINAL">ปลายภาค</option><option value="MIDTERM">กลางภาค</option></select></div>
+          <div class="field"><label for="nxd{{ s.section_id }}">วันที่</label><input id="nxd{{ s.section_id }}" type="date" name="exam_date" required></div>
+          {{ time_field('nxs' ~ s.section_id, 'start_time', 'เริ่ม', required=True) }}
+          {{ time_field('nxe' ~ s.section_id, 'end_time', 'จบ', required=True) }}
+          <div class="field"><label for="nxr{{ s.section_id }}">ห้องสอบ</label>{{ room_select('nxr' ~ s.section_id) }}</div>
+          <button class="btn primary">{{ ui.icon('plus', 'i-sm') }}เพิ่มเวลาสอบ</button>
+        </form>{% endif %}
+      </div>
+    </div>
+  </details>
+  {% endfor %}
+  </div>
+  <p class="empty filter-empty" data-filter-empty hidden>ไม่พบกลุ่มเรียนตามตัวกรอง</p>
+</div>
 {% endblock %}

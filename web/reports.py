@@ -7,7 +7,8 @@ DAY_NAME = "CASE {col} WHEN 1 THEN 'จ.' WHEN 2 THEN 'อ.' WHEN 3 THEN 'พ.' 
 STUDENT_INFO = """
 SELECT s.student_id, s.first_name, s.last_name, s.curriculum_id, p.program_name,
        lv.year_level, lv.semester, lv.term_id,
-       ts.reg_open_at, ts.reg_close_at, ts.reg_is_open, ts.max_credits,
+       ts.reg_open_at, ts.reg_close_at, ts.add_open_at, ts.add_close_at, ts.drop_open_at, ts.drop_close_at,
+       ts.reg_is_open, ts.add_is_open, ts.drop_is_open, ts.can_add, ts.can_drop, ts.max_credits,
        COALESCE(cr.credits, 0) AS credits
 FROM student s
 JOIN curriculum cu ON cu.curriculum_id = s.curriculum_id
@@ -133,15 +134,21 @@ times AS (
   SELECT section_id,
          group_concat({DAY_NAME.format(col="day_of_week")} || ' ' || start_time || '-' || end_time
                       || COALESCE(' ' || room_code, ''), ', ') AS class_time
+         , group_concat(day_of_week || '@' || start_time, ' ') AS slots
   FROM (SELECT * FROM class_meeting ORDER BY day_of_week, start_time)
   GROUP BY section_id
+),
+teachers AS (
+  SELECT si.section_id, group_concat(i.full_name, ', ') AS teachers
+  FROM section_instructor si JOIN instructor i ON i.instructor_id = si.instructor_id
+  GROUP BY si.section_id
 ),
 exams AS (
   SELECT section_id, group_concat(exam_date || ' ' || start_time || '-' || end_time, ', ') AS exam_time
   FROM exam GROUP BY section_id
 )
-SELECT s.section_id, s.course_code, c.name_th, c.credits, s.section_no,
-       t.class_time, x.exam_time,
+SELECT s.section_id, s.course_code, c.name_th, c.credits, c.credit_pattern, s.section_no,
+       t.class_time, t.slots, x.exam_time, tc.teachers,
        ss.enrolled, ss.capacity, sf.seats_left,
        sp.year_level || '/' || sp.semester AS plan_term, sp.is_required,
        EXISTS (SELECT 1 FROM enrollment e WHERE e.student_id = :sid AND e.section_id = s.section_id) AS is_enrolled,
@@ -167,6 +174,7 @@ JOIN v_section_seat ss ON ss.section_id = s.section_id
 JOIN v_seat_for_student sf ON sf.section_id = s.section_id AND sf.student_id = :sid
 LEFT JOIN times t ON t.section_id = s.section_id
 LEFT JOIN exams x ON x.section_id = s.section_id
+LEFT JOIN teachers tc ON tc.section_id = s.section_id
 LEFT JOIN study_plan sp ON sp.curriculum_id = me.curriculum_id AND sp.course_code = s.course_code
 ORDER BY (sp.course_code IS NULL), s.course_code, s.section_no
 """
@@ -262,8 +270,7 @@ LIMIT 200
 """
 
 TERMS = """
-SELECT term_id, academic_year, semester, is_current, reg_open_at, reg_close_at, reg_is_open, max_credits
-FROM v_term_status ORDER BY academic_year DESC, semester DESC
+SELECT * FROM v_term_status ORDER BY academic_year DESC, semester DESC
 """
 
 SECTIONS_ADMIN = """
@@ -351,4 +358,83 @@ JOIN course c  ON c.course_code = s.course_code
 LEFT JOIN app_user u ON u.user_id = l.actor_user_id
 ORDER BY l.log_id DESC
 LIMIT 300
+"""
+
+
+# ------------------------------------------------------------------ ตารางเรียนรายสัปดาห์ (อ่านอย่างเดียว ใช้กับ core.timetable)
+STUDENT_MEETINGS = """
+SELECT cm.day_of_week, cm.start_time, cm.end_time, cm.room_code,
+       s.section_id, s.course_code, s.section_no, c.name_th
+FROM enrollment e
+JOIN section s        ON s.section_id = e.section_id
+JOIN term t           ON t.term_id = s.term_id AND t.is_current = 1
+JOIN course c         ON c.course_code = s.course_code
+JOIN class_meeting cm ON cm.section_id = s.section_id
+WHERE e.student_id = :sid
+ORDER BY cm.day_of_week, cm.start_time
+"""
+
+ROOM_MEETINGS = """
+SELECT u.day_of_week, u.start_time, u.end_time, u.section_id, u.course_code, u.section_no, c.name_th,
+       (SELECT group_concat(i.full_name, ', ') FROM section_instructor si
+          JOIN instructor i ON i.instructor_id = si.instructor_id WHERE si.section_id = u.section_id) AS teachers
+FROM v_room_usage u
+JOIN term t   ON t.term_id = u.term_id AND t.is_current = 1
+JOIN course c ON c.course_code = u.course_code
+WHERE u.room_code = :room
+ORDER BY u.day_of_week, u.start_time
+"""
+
+INSTRUCTOR_MEETINGS = """
+SELECT b.day_of_week, b.start_time, b.end_time, b.section_id, b.course_code, b.section_no, c.name_th, cm.room_code
+FROM v_instructor_busy b
+JOIN term t           ON t.term_id = b.term_id AND t.is_current = 1
+JOIN course c         ON c.course_code = b.course_code
+JOIN class_meeting cm ON cm.meeting_id = b.meeting_id
+WHERE b.instructor_id = :iid
+ORDER BY b.day_of_week, b.start_time
+"""
+
+
+# ------------------------------------------------------------------ รายละเอียดวิชา (/courses/<code>)
+COURSE_DETAIL = "SELECT * FROM course WHERE course_code = :code"
+
+COURSE_PREREQS = """
+SELECT p.prereq_code AS course_code, c.name_th,
+       EXISTS (SELECT 1 FROM v_passed v WHERE v.student_id = :sid AND v.course_code = p.prereq_code) AS passed
+FROM prerequisite p JOIN course c ON c.course_code = p.prereq_code
+WHERE p.course_code = :code ORDER BY p.prereq_code
+"""
+
+COURSE_REQUIRED_BY = """
+SELECT p.course_code, c.name_th
+FROM prerequisite p JOIN course c ON c.course_code = p.course_code
+WHERE p.prereq_code = :code ORDER BY p.course_code
+"""
+
+COURSE_PLANS = """
+SELECT sp.curriculum_id, p.program_name, sp.year_level, sp.semester, sp.is_required
+FROM study_plan sp
+JOIN curriculum cu ON cu.curriculum_id = sp.curriculum_id
+JOIN program p     ON p.program_code = cu.program_code
+WHERE sp.course_code = :code ORDER BY sp.curriculum_id
+"""
+
+COURSE_SECTIONS = f"""
+SELECT s.section_id, s.section_no, ss.enrolled, ss.capacity, ss.available,
+       (SELECT group_concat({DAY_NAME.format(col="m.day_of_week")} || ' ' || m.start_time || '-' || m.end_time
+                            || COALESCE(' ห้อง ' || m.room_code, ''), ', ')
+          FROM (SELECT * FROM class_meeting WHERE section_id = s.section_id ORDER BY day_of_week, start_time) m) AS class_time,
+       (SELECT group_concat(CASE x.exam_type WHEN 'FINAL' THEN 'ปลายภาค ' ELSE 'กลางภาค ' END
+                            || x.exam_date || ' ' || x.start_time || '-' || x.end_time, ', ')
+          FROM exam x WHERE x.section_id = s.section_id) AS exam_time,
+       (SELECT group_concat(i.full_name, ', ') FROM section_instructor si
+          JOIN instructor i ON i.instructor_id = si.instructor_id WHERE si.section_id = s.section_id) AS teachers,
+       (SELECT group_concat(q.curriculum_id || ' ' || q.used || '/' || q.seats, ', ')
+          FROM v_quota_seat q WHERE q.section_id = s.section_id) AS quotas
+FROM section s
+JOIN term t ON t.term_id = s.term_id AND t.is_current = 1
+JOIN v_section_seat ss ON ss.section_id = s.section_id
+WHERE s.course_code = :code
+ORDER BY s.section_no
 """

@@ -69,11 +69,17 @@ CREATE TABLE term (
   academic_year INTEGER NOT NULL,
   semester      INTEGER NOT NULL CHECK (semester IN (1, 2, 3)),
   is_current    INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
-  reg_open_at   TEXT,                            -- ช่วงที่นักศึกษาลง/ถอน/เข้าคิวเองได้ (NULL = ยังไม่เปิด)
+  reg_open_at   TEXT,                            -- ช่วงลงทะเบียนปกติ: นักศึกษาลง/ถอน/เข้าคิวเองได้ (NULL = ยังไม่เปิด)
   reg_close_at  TEXT,
+  add_open_at   TEXT,                            -- ช่วงเพิ่มวิชา (รวมลงทะเบียนล่าช้า): ลงและเข้าคิวได้ แต่ถอนไม่ได้
+  add_close_at  TEXT,
+  drop_open_at  TEXT,                            -- ช่วงลดวิชา: ถอนได้ แต่ลงเพิ่มไม่ได้
+  drop_close_at TEXT,
   max_credits   INTEGER NOT NULL DEFAULT 22 CHECK (max_credits > 0),  -- หน่วยกิตสูงสุดต่อภาค
   UNIQUE (academic_year, semester),
-  CHECK (reg_open_at IS NULL OR reg_close_at IS NULL OR reg_open_at < reg_close_at)
+  CHECK (reg_open_at  IS NULL OR reg_close_at  IS NULL OR reg_open_at  < reg_close_at),
+  CHECK (add_open_at  IS NULL OR add_close_at  IS NULL OR add_open_at  < add_close_at),
+  CHECK (drop_open_at IS NULL OR drop_close_at IS NULL OR drop_open_at < drop_close_at)
 );
 -- มีภาคปัจจุบันได้ภาคเดียว
 CREATE UNIQUE INDEX ux_term_one_current ON term(is_current) WHERE is_current = 1;
@@ -213,13 +219,18 @@ CREATE VIEW v_actor AS
 SELECT u.user_id, u.role, u.student_id
 FROM app_session s JOIN app_user u ON u.user_id = s.user_id;
 
--- ช่วงลงทะเบียนของแต่ละภาค เปิดอยู่หรือไม่ ณ ตอนนี้
+-- ช่วงต่างๆ ของแต่ละภาค เปิดอยู่หรือไม่ ณ ตอนนี้ (ตามปฏิทินการศึกษา: ลงทะเบียนปกติ / เพิ่มวิชา / ลดวิชา)
+-- can_add  = ลงหรือเข้าคิวได้ (ช่วงลงทะเบียนปกติ หรือช่วงเพิ่มวิชา)
+-- can_drop = ถอนได้ (ช่วงลงทะเบียนปกติ หรือช่วงลดวิชา)
 CREATE VIEW v_term_status AS
-SELECT t.*,
-       (t.reg_open_at IS NOT NULL AND t.reg_close_at IS NOT NULL
-        AND strftime('%Y-%m-%d %H:%M', 'now', 'localtime') >= t.reg_open_at
-        AND strftime('%Y-%m-%d %H:%M', 'now', 'localtime') <  t.reg_close_at) AS reg_is_open
-FROM term t;
+SELECT w.*, (w.reg_is_open OR w.add_is_open) AS can_add, (w.reg_is_open OR w.drop_is_open) AS can_drop
+FROM (
+  SELECT t.*,
+         COALESCE(n.now >= t.reg_open_at  AND n.now < t.reg_close_at,  0) AS reg_is_open,
+         COALESCE(n.now >= t.add_open_at  AND n.now < t.add_close_at,  0) AS add_is_open,
+         COALESCE(n.now >= t.drop_open_at AND n.now < t.drop_close_at, 0) AS drop_is_open
+  FROM term t CROSS JOIN (SELECT strftime('%Y-%m-%d %H:%M', 'now', 'localtime') AS now) n
+) w;
 
 -- ชั้นปีและเทอมของนักศึกษาในภาคปัจจุบัน
 CREATE VIEW v_student_level AS
@@ -359,11 +370,13 @@ JOIN class_meeting cm ON cm.section_id = si.section_id;
 CREATE TRIGGER trg_enrollment_rules
 BEFORE INSERT ON enrollment
 BEGIN
-  -- นักศึกษาทำรายการเองได้เฉพาะในช่วงลงทะเบียน (ฝ่ายทะเบียนและระบบไม่ติดกฎนี้)
-  SELECT RAISE(ABORT, 'ไม่อยู่ในช่วงลงทะเบียนของภาคเรียนนี้')
+  -- นักศึกษาลงเองได้เฉพาะช่วงลงทะเบียนปกติหรือช่วงเพิ่มวิชา (ฝ่ายทะเบียนและระบบไม่ติดกฎนี้
+  -- รวมถึงการเลื่อนคนอื่นขึ้นจากคิวตอนนักศึกษาถอนในช่วงลดวิชา จึงตรวจเฉพาะเมื่อลงให้ตัวเอง)
+  SELECT RAISE(ABORT, 'ไม่อยู่ในช่วงลงทะเบียนหรือช่วงเพิ่มวิชาของภาคเรียนนี้')
   WHERE (SELECT role FROM v_actor) = 'student'
+    AND NEW.student_id = (SELECT student_id FROM v_actor)
     AND NOT EXISTS (SELECT 1 FROM section ns JOIN v_term_status ts ON ts.term_id = ns.term_id
-                     WHERE ns.section_id = NEW.section_id AND ts.reg_is_open);
+                     WHERE ns.section_id = NEW.section_id AND ts.can_add);
 
   -- ลงวิชาเดียวกันซ้ำในเทอมเดียวกัน (คนละ section)
   SELECT RAISE(ABORT, 'ลงวิชานี้ไว้แล้วใน section อื่น')
@@ -447,14 +460,15 @@ BEGIN
                        WHERE s2.course_code = ns.course_code AND s2.term_id = ns.term_id);
 END;
 
--- ถอนได้เฉพาะในช่วงลงทะเบียน (สำหรับนักศึกษา)
+-- นักศึกษาถอนเองได้เฉพาะช่วงลงทะเบียนปกติหรือช่วงลดวิชา
 CREATE TRIGGER trg_enrollment_before_drop
 BEFORE DELETE ON enrollment
 BEGIN
-  SELECT RAISE(ABORT, 'ไม่อยู่ในช่วงลงทะเบียนของภาคเรียนนี้')
+  SELECT RAISE(ABORT, 'ไม่อยู่ในช่วงลงทะเบียนหรือช่วงลดวิชาของภาคเรียนนี้')
   WHERE (SELECT role FROM v_actor) = 'student'
+    AND OLD.student_id = (SELECT student_id FROM v_actor)
     AND NOT EXISTS (SELECT 1 FROM section os JOIN v_term_status ts ON ts.term_id = os.term_id
-                     WHERE os.section_id = OLD.section_id AND ts.reg_is_open);
+                     WHERE os.section_id = OLD.section_id AND ts.can_drop);
 END;
 
 -- ถอนวิชา: บันทึกประวัติ แล้วเลื่อนคนแรกในคิวที่ลงได้จริงขึ้นมา
@@ -472,10 +486,11 @@ END;
 CREATE TRIGGER trg_waitlist_rules
 BEFORE INSERT ON waitlist
 BEGIN
-  SELECT RAISE(ABORT, 'ไม่อยู่ในช่วงลงทะเบียนของภาคเรียนนี้')
+  SELECT RAISE(ABORT, 'ไม่อยู่ในช่วงลงทะเบียนหรือช่วงเพิ่มวิชาของภาคเรียนนี้')
   WHERE (SELECT role FROM v_actor) = 'student'
+    AND NEW.student_id = (SELECT student_id FROM v_actor)
     AND NOT EXISTS (SELECT 1 FROM section ns JOIN v_term_status ts ON ts.term_id = ns.term_id
-                     WHERE ns.section_id = NEW.section_id AND ts.reg_is_open);
+                     WHERE ns.section_id = NEW.section_id AND ts.can_add);
 
   SELECT RAISE(ABORT, 'ลงวิชานี้ไว้แล้ว')
   WHERE EXISTS (

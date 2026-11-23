@@ -509,3 +509,11 @@ details.disclosure > .body { padding: var(--s4); }
   .card { box-shadow: none; break-inside: avoid; }
   body { background: #fff; }
 }
+
+/* ปุ่ม × ในป้าย (ถอดอาจารย์) · ขนาดกดได้ ≥24px ตาม WCAG 2.5.8 */
+.tag:has(.tag-x) { padding-right: 2px; }
+.tag-x { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-left: 2px; padding: 0;
+         border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
+.tag-x:hover { background: color-mix(in srgb, currentColor 15%, transparent); }
+.sec .meter { min-width: 150px; }
+.sec > summary .title { flex: 1 1 320px; }

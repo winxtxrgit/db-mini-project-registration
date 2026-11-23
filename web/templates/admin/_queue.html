@@ -11,7 +11,7 @@
     <td class="num" data-label="ลำดับ">{{ r.queue_no }}</td>
     <td data-label="นักศึกษา"><a href="{{ url_for('admin.student_view', sid=r.student_id) }}">{{ r.student_id }}</a> {{ r.student_name }}</td>
     <td data-label="สิทธิ์">{{ {1:'1 วิชาค้าง', 2:'2 วิชาบังคับ', 3:'3 อื่นๆ'}[r.priority] }}</td>
-    <td class="nowrap" data-label="ขอเมื่อ">{{ r.requested_at[:16] }}</td>
+    <td class="nowrap" data-label="ขอเมื่อ">{{ r.requested_at[:16]|thdatetime }}</td>
     <td data-label="เลื่อนได้หรือไม่">{% if not r.no_conflict %}{{ ui.tag('bad', 'ไม่ได้ · เวลาชน', 'x') }}
         {% elif not r.credits_ok %}{{ ui.tag('bad', 'ไม่ได้ · หน่วยกิตเกิน', 'x') }}
         {% elif not r.prereq_ok %}{{ ui.tag('bad', 'ไม่ได้ · ไม่ผ่านวิชาบังคับก่อน', 'x') }}

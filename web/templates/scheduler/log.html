@@ -14,11 +14,11 @@
     {% set ek, eic = ENTITY[r.entity] %}{% set ak, atext, aic = ACTION[r.action] %}
     <tr>
       <td class="num muted" data-label="#">{{ r.log_id }}</td>
-      <td class="nowrap" data-label="เวลา">{{ r.logged_at }}</td>
+      <td class="nowrap" data-label="เวลา">{{ r.logged_at|thdatetime }}</td>
       <td class="primary-cell"><span class="code">{{ r.course_code }}</span> กลุ่ม {{ r.section_no }}</td>
       <td data-label="เรื่อง"><span class="row nowrap">{{ ui.icon(eic, 'i-sm') }}{{ ek }}</span></td>
       <td data-label="รายการ">{{ ui.tag(ak, atext, aic) }}</td>
-      <td data-label="รายละเอียด">{{ r.detail }}</td>
+      <td data-label="รายละเอียด">{{ r.detail|thdate }}</td>
       <td data-label="ผู้ทำ">{{ r.actor }}</td>
     </tr>
     {% endfor %}

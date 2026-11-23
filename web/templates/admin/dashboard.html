@@ -10,11 +10,8 @@
 {% endcall %}
 
 <div class="stats">
-  {% if term.reg_is_open %}
-    {{ ui.stat('ช่วงลงทะเบียน', 'เปิดอยู่', 'ถึง ' ~ term.reg_close_at, 'ok', url_for('admin.terms'), 'calendar', text=True) }}
-  {% else %}
-    {{ ui.stat('ช่วงลงทะเบียน', 'ปิดอยู่', (term.reg_open_at ~ ' ถึง ' ~ term.reg_close_at) if term.reg_open_at else 'ยังไม่ตั้งช่วงลงทะเบียน', 'bad', url_for('admin.terms'), 'lock', text=True) }}
-  {% endif %}
+  {% set ph = term_phase(term) %}
+  {{ ui.stat('ตอนนี้ (สำหรับนักศึกษา)', ph.label, ph.detail ~ ' · ตั้งค่าได้ที่หน้าภาคเรียน', ph.kind, url_for('admin.terms'), 'calendar' if ph.open else 'lock', text=True) }}
   {{ ui.stat('วิชาบังคับที่ที่นั่งไม่พอ', short|length, 'เต็มหรือไม่เปิดสอน แต่ยังมีคนต้องเรียน', 'bad' if short else 'ok', '#demand', 'alert', 'วิชา') }}
   {{ ui.stat('ที่นั่งถูกล็อกด้วยโควตา', locked|length, 'โควตาหลักสูตรเต็ม ทั้งที่กลุ่มยังว่าง', 'warn' if locked else 'ok', '#locked', 'lock', 'กลุ่ม') }}
   {{ ui.stat('คนในคิวสำรอง', queue|length, (ready|length ~ ' คนเลื่อนได้ทันที') if ready else 'ไม่มีใครเลื่อนได้ตอนนี้', 'info' if queue else '', '#queue', 'hourglass', 'คน') }}

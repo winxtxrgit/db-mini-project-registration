@@ -59,11 +59,11 @@
   </a>
   {% if g.user %}
     {% if role == 'student' %}{{ nav_links('topnav') }}{% endif %}
-    {% if current_term %}
-    <span class="term-chip {{ 'open' if current_term.reg_is_open }}" title="ภาคเรียนปัจจุบัน">
+    {% if current_term %}{% set ph = term_phase(current_term) %}
+    <span class="term-chip {{ ph.kind }}" title="ภาคเรียนปัจจุบัน · {{ ph.detail }}">
       <span class="dot" aria-hidden="true"></span>
       <span>{{ current_term.term_id }}</span>
-      <span class="term-label">· {{ 'เปิดลงทะเบียน' if current_term.reg_is_open else 'ปิดลงทะเบียน' }}</span>
+      <span class="term-label">· {{ ph.label }}</span>
     </span>
     {% endif %}
     <span class="who">{{ g.user.username }}<small>{{ ROLE_NAME[role] }}</small></span>

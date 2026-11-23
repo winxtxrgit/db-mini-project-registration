@@ -14,3 +14,6 @@ web/registration.db
 
 # secret key ของ Flask (สร้างอัตโนมัติ)
 web/.secret_key
+
+# virtualenv สำหรับรันเว็บในเครื่อง
+.venv/

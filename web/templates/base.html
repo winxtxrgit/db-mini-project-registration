@@ -1,86 +1,100 @@
+{% import "_ui.html" as ui %}
+{#- เมนูของแต่ละบทบาท: (หัวกลุ่ม, [(endpoint, ข้อความ, ไอคอน, endpoint อื่นที่นับเป็นเมนูนี้), ...]) -#}
+{% set NAV = {
+  'student': [(None, [('student.home', 'ลงทะเบียน', 'book', ()), ('student.log', 'ประวัติของฉัน', 'history', ())])],
+  'admin': [
+    ('งานลงทะเบียน', [('admin.dashboard', 'ภาพรวม', 'dashboard', ()),
+                      ('admin.students', 'นักศึกษา', 'cap', ('admin.student_view',)),
+                      ('admin.sections', 'กลุ่มเรียนและคิว', 'layers', ()),
+                      ('admin.credits', 'หน่วยกิตเทียบเพดาน', 'chart', ())]),
+    ('ตั้งค่า', [('admin.terms', 'ภาคเรียน', 'calendar', ()),
+                 ('admin.users', 'บัญชีผู้ใช้', 'key', ())]),
+    ('ตารางเรียน (ดูอย่างเดียว)', [('scheduler.home', 'ตารางเรียนและสอบ', 'grid', ()),
+                 ('scheduler.rooms', 'ห้อง', 'door', ()),
+                 ('scheduler.instructors', 'อาจารย์', 'user', ())]),
+    ('ประวัติ', [('admin.log', 'ประวัติการลงทะเบียน', 'history', ()),
+                 ('scheduler.log', 'ประวัติการแก้ตาราง', 'history', ())]),
+  ],
+  'scheduler': [
+    ('จัดตาราง', [('scheduler.home', 'ตารางเรียนและสอบ', 'grid', ()),
+                  ('scheduler.rooms', 'ห้อง', 'door', ()),
+                  ('scheduler.instructors', 'อาจารย์', 'user', ())]),
+    ('ประวัติ', [('scheduler.log', 'ประวัติการแก้ตาราง', 'history', ())]),
+  ],
+} %}
+{% set role = g.user.role if g.user else None %}
+{% macro nav_links(cls) -%}
+<nav class="{{ cls }}" aria-label="เมนูหลัก">
+  {% for group, items in NAV[role] %}
+    {% if group %}<div class="group">{{ group }}</div>{% endif %}
+    {% for ep, text, ic, also in items %}
+      <a href="{{ url_for(ep) }}" {% if request.endpoint == ep or request.endpoint in also %}aria-current="page"{% endif %}>{{ ui.icon(ic) }}<span>{{ text }}</span></a>
+    {% endfor %}
+  {% endfor %}
+</nav>
+{%- endmacro %}
 <!doctype html>
-<html lang="th">
+<html lang="th" class="no-js">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}ระบบลงทะเบียนตามแผนการเรียน{% endblock %}</title>
+<title>{% block title %}หน้าหลัก{% endblock %} · ระบบลงทะเบียนตามแผนการเรียน</title>
+<script>/* ตั้งธีมก่อนวาดหน้า กันจอกะพริบ */try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
-{# หน้าตายังเป็นแบบชั่วคราว: รอบนี้เน้นตัวระบบ UX/UI จะออกแบบใหม่ทีหลัง #}
-<style>
-  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#e4e7ec;
-          --brand:#1f5fbf; --ok:#127a3e; --okbg:#e7f6ec; --bad:#b42318; --badbg:#fdecea;
-          --warn:#8a5a00; --warnbg:#fff5d6; --info:#1f5fbf; --infobg:#e8f0fc; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family:'Sarabun',system-ui,sans-serif; background:var(--bg); color:var(--ink); font-size:15px; }
-  header { background:var(--brand); color:#fff; }
-  header .wrap { display:flex; flex-wrap:wrap; gap:14px; align-items:center; padding:10px 16px; }
-  header a { color:#fff; text-decoration:none; opacity:.9; } header a:hover { opacity:1; text-decoration:underline; }
-  header .brand { font-weight:600; font-size:16px; margin-right:auto; }
-  header form { margin:0; display:inline; }
-  header .who { font-size:13px; opacity:.85; }
-  header button { background:transparent; border:1px solid #fff8; color:#fff; padding:3px 10px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px; }
-  .wrap { max-width:1240px; margin:0 auto; padding:16px; }
-  h1 { font-size:22px; margin:8px 0 4px; } h2 { font-size:17px; margin:0 0 4px; } h3 { font-size:15px; margin:12px 0 6px; }
-  .sub { color:var(--muted); margin:0 0 12px; font-size:14px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
-  .table-scroll { overflow-x:auto; }
-  table { width:100%; border-collapse:collapse; font-size:14px; }
-  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { background:#f9fafb; font-weight:600; white-space:nowrap; }
-  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
-  .tag { display:inline-block; padding:1px 8px; border-radius:999px; font-size:13px; white-space:nowrap; }
-  .tag.ok { background:var(--okbg); color:var(--ok); } .tag.bad { background:var(--badbg); color:var(--bad); }
-  .tag.warn { background:var(--warnbg); color:var(--warn); } .tag.info { background:var(--infobg); color:var(--info); }
-  .tag.muted { background:#eef0f3; color:var(--muted); }
-  .flash { padding:10px 14px; border-radius:8px; margin-bottom:10px; }
-  .flash.ok { background:var(--okbg); color:var(--ok); } .flash.error { background:var(--badbg); color:var(--bad); }
-  .flash.info { background:var(--infobg); color:var(--info); }
-  .btn { font:inherit; font-size:13px; padding:4px 10px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; white-space:nowrap; }
-  .btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
-  .btn.danger { color:var(--bad); border-color:#f3b8b2; }
-  form.inline { display:inline-flex; flex-wrap:wrap; gap:4px; align-items:center; margin:2px 0; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; margin-bottom:16px; }
-  .grid .card { margin-bottom:0; }
-  .empty { color:var(--muted); font-size:14px; }
-  input, select { font:inherit; font-size:14px; padding:4px 6px; border:1px solid var(--line); border-radius:6px; }
-  input.short { width:70px; } input.time { width:72px; }
-  a { color:var(--brand); }
-  tr.mine td { background:#f3f8ff; }
-  .subnav { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
-  .subnav a { padding:4px 12px; border-radius:999px; background:#fff; border:1px solid var(--line); text-decoration:none; font-size:14px; }
-</style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v=static_v) }}">
+<script src="{{ url_for('static', filename='js/app.js', v=static_v) }}" defer></script>
 </head>
 <body>
-<header><div class="wrap">
-  <span class="brand">ระบบลงทะเบียนตามแผนการเรียน · CDTI</span>
+{% include "_icons.html" %}
+<a class="skip" href="#main">ข้ามไปเนื้อหาหลัก</a>
+
+<header class="topbar">
+  <a class="brand" href="{{ url_for('index') }}">
+    <span class="brand-mark">{{ ui.icon('cap') }}</span>
+    <span class="brand-text">ลงทะเบียนตามแผนการเรียน<small>สถาบันเทคโนโลยีจิตรลดา</small></span>
+  </a>
   {% if g.user %}
-    {% if g.user.role == 'student' %}
-      <a href="{{ url_for('student.home') }}">ลงทะเบียน</a>
-      <a href="{{ url_for('student.log') }}">ประวัติของฉัน</a>
-    {% elif g.user.role == 'admin' %}
-      <a href="{{ url_for('admin.dashboard') }}">ภาพรวม</a>
-      <a href="{{ url_for('admin.students') }}">นักศึกษา</a>
-      <a href="{{ url_for('admin.sections') }}">กลุ่มเรียนและคิว</a>
-      <a href="{{ url_for('admin.terms') }}">ภาคเรียน</a>
-      <a href="{{ url_for('admin.users') }}">บัญชีผู้ใช้</a>
-      <a href="{{ url_for('admin.log') }}">ประวัติ</a>
-      <a href="{{ url_for('scheduler.home') }}">ตารางเรียน</a>
-    {% else %}
-      <a href="{{ url_for('scheduler.home') }}">จัดตาราง</a>
-      <a href="{{ url_for('scheduler.rooms') }}">ห้อง</a>
-      <a href="{{ url_for('scheduler.instructors') }}">อาจารย์</a>
-      <a href="{{ url_for('scheduler.log') }}">ประวัติการแก้ตาราง</a>
+    {% if role == 'student' %}{{ nav_links('topnav') }}{% endif %}
+    {% if current_term %}
+    <span class="term-chip {{ 'open' if current_term.reg_is_open }}" title="ภาคเรียนปัจจุบัน">
+      <span class="dot" aria-hidden="true"></span>
+      <span>{{ current_term.term_id }}</span>
+      <span class="term-label">· {{ 'เปิดลงทะเบียน' if current_term.reg_is_open else 'ปิดลงทะเบียน' }}</span>
+    </span>
     {% endif %}
-    <span class="who">{{ g.user.username }} · {{ ROLE_NAME[g.user.role] }}</span>
-    <form method="post" action="{{ url_for('logout') }}">{{ csrf_field() }}<button>ออกจากระบบ</button></form>
+    <span class="who">{{ g.user.username }}<small>{{ ROLE_NAME[role] }}</small></span>
   {% endif %}
-</div></header>
-<main class="wrap">
-  {% for cat, msg in get_flashed_messages(with_categories=true) %}
-    <div class="flash {{ cat }}">{{ msg }}</div>
-  {% endfor %}
-  {% block content %}{% endblock %}
-</main>
+  <button type="button" class="icon-btn js-only" data-theme-toggle aria-label="เปลี่ยนธีม">
+    <span data-theme-icon="auto">{{ ui.icon('monitor') }}</span>
+    <span data-theme-icon="light" hidden>{{ ui.icon('sun') }}</span>
+    <span data-theme-icon="dark" hidden>{{ ui.icon('moon') }}</span>
+  </button>
+  {% if g.user %}
+    {% if role != 'student' %}
+    <details class="navmenu">
+      <summary class="icon-btn" aria-label="เปิดเมนู">{{ ui.icon('menu') }}</summary>
+      <div class="navmenu-panel">{{ nav_links('sidenav') }}</div>
+    </details>
+    {% endif %}
+    <form method="post" action="{{ url_for('logout') }}" class="inline">{{ csrf_field() }}
+      <button class="icon-btn" aria-label="ออกจากระบบ" title="ออกจากระบบ">{{ ui.icon('logout') }}</button></form>
+  {% endif %}
+</header>
+
+<div class="shell {{ 'has-side' if role and role != 'student' }}">
+  {% if role and role != 'student' %}<aside class="side">{{ nav_links('sidenav') }}</aside>{% endif %}
+  <main class="main" id="main" tabindex="-1">
+    {% with msgs = get_flashed_messages(with_categories=true) %}{% if msgs %}
+    <div class="flashes" role="status" aria-live="polite">
+      {% for cat, msg in msgs %}
+      <div {% if cat == 'error' %}role="alert" {% endif %}class="flash {{ cat }}">{{ msg }}<button type="button" class="icon-btn flash-close js-only" aria-label="ปิดข้อความ">{{ ui.icon('x', 'i-sm') }}</button></div>
+      {% endfor %}
+    </div>
+    {% endif %}{% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
 </body>
 </html>

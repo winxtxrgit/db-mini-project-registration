@@ -145,3 +145,51 @@ def require(*roles):
             return view(*args, **kwargs)
         return wrapper
     return deco
+
+
+# ------------------------------------------------------------------ ตารางเรียนรายสัปดาห์ (ใช้กับ macro ui.timetable)
+def _minutes(hhmm: str) -> int:
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+
+def timetable(meetings, sub_key: str = "room_code", tone_key: str = "course_code") -> dict:
+    """แปลงคาบเรียนเป็นตำแหน่งบน CSS grid (ช่องละ 30 นาที)
+
+    meetings: แถวที่มี day_of_week, start_time, end_time, course_code, name_th และคอลัมน์ตาม sub_key
+    คืนค่า days, rows, lines (เส้นบอกเวลา), blocks (ตำแหน่งแต่ละคาบ + clash ถ้าทับกับคาบอื่นวันเดียวกัน)
+    และ by_day (รายการเรียงตามวัน สำหรับจอแคบและ screen reader)
+    """
+    items = [dict(m) for m in meetings]
+    if not items:
+        return {"empty": True}
+    start = min(_minutes(m["start_time"]) for m in items)
+    end = max(_minutes(m["end_time"]) for m in items)
+    start = min(8 * 60, start - start % 60)                 # อย่างน้อยเริ่ม 08:00
+    end = max(17 * 60, end + (-end % 60))                   # อย่างน้อยถึง 17:00
+    used = {m["day_of_week"] for m in items}
+    days = [d for d in range(1, 8) if d <= 5 or d in used]  # จ.–ศ. เสมอ ส./อา. เมื่อมีคาบ
+    col = {d: i + 2 for i, d in enumerate(days)}
+
+    tones, blocks = {}, []
+    for m in sorted(items, key=lambda x: (x["day_of_week"], x["start_time"])):
+        s, e = _minutes(m["start_time"]), _minutes(m["end_time"])
+        key = m.get(tone_key)
+        tones.setdefault(key, len(tones) % 4)
+        clash = any(o is not m and o["day_of_week"] == m["day_of_week"]
+                    and _minutes(o["start_time"]) < e and s < _minutes(o["end_time"])
+                    and o.get("section_id") != m.get("section_id")
+                    and o["course_code"] != m["course_code"]     # กลุ่มของวิชาเดียวกันเรียนรวมได้ (ตามกฎห้องใน trigger)
+                    for o in items)
+        blocks.append({
+            "dow": m["day_of_week"], "col": col[m["day_of_week"]],
+            "row": (s - start) // 30 + 2, "span": max(1, (e - s + 29) // 30),
+            "code": m["course_code"] + (f" ({m['section_no']})" if m.get("section_no") else ""),
+            "title": m.get("name_th") or "", "sub": m.get(sub_key) or "",
+            "time": f"{m['start_time']}–{m['end_time']}", "clash": clash, "tone": tones[key],
+        })
+    rows_ = (end - start) // 30
+    lines = [(i + 2, f"{(start + i * 30) // 60:02d}:00", i % 2 == 1) for i in range(rows_)]
+    by_day = [(DAYS[d], [b for b in blocks if b["dow"] == d]) for d in days if d in used]
+    return {"empty": False, "days": [(d, DAYS[d]) for d in days], "rows": rows_,
+            "lines": lines, "blocks": blocks, "by_day": by_day}

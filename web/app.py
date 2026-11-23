@@ -34,6 +34,24 @@ app.secret_key = _secret_key()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 app.jinja_env.globals.update(DAYS=DAYS, ROLE_NAME=ROLE_NAME)
 app.teardown_appcontext(close_db)
+
+
+@app.context_processor
+def layout_context():
+    """ข้อมูลที่ทุกหน้าใช้ใน base.html: ภาคเรียนปัจจุบัน และเลขเวอร์ชันไฟล์ static (กัน browser ใช้ไฟล์เก่า)"""
+    term = None
+    if g.get("user") is not None:
+        term = one("SELECT term_id, reg_is_open, reg_open_at, reg_close_at, max_credits "
+                   "FROM v_term_status WHERE is_current = 1")
+    return {"current_term": term, "static_v": _static_version() if app.debug else _STATIC_V}
+
+
+def _static_version() -> str:
+    files = list((BASE / "static").rglob("*.*"))
+    return str(int(max((f.stat().st_mtime for f in files), default=0)))
+
+
+_STATIC_V = _static_version()
 app.register_blueprint(student_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(scheduler_bp)
@@ -114,6 +132,11 @@ def logout():
 @app.errorhandler(403)
 def forbidden(_e):
     return render_template("error.html", code=403, message="บัญชีนี้ไม่มีสิทธิ์เข้าหน้านี้"), 403
+
+
+@app.errorhandler(404)
+def not_found(_e):
+    return render_template("error.html", code=404, message="ไม่พบหน้าหรือข้อมูลที่ต้องการ"), 404
 
 
 @app.errorhandler(400)

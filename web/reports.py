@@ -352,3 +352,38 @@ LEFT JOIN app_user u ON u.user_id = l.actor_user_id
 ORDER BY l.log_id DESC
 LIMIT 300
 """
+
+
+# ------------------------------------------------------------------ ตารางเรียนรายสัปดาห์ (อ่านอย่างเดียว ใช้กับ core.timetable)
+STUDENT_MEETINGS = """
+SELECT cm.day_of_week, cm.start_time, cm.end_time, cm.room_code,
+       s.section_id, s.course_code, s.section_no, c.name_th
+FROM enrollment e
+JOIN section s        ON s.section_id = e.section_id
+JOIN term t           ON t.term_id = s.term_id AND t.is_current = 1
+JOIN course c         ON c.course_code = s.course_code
+JOIN class_meeting cm ON cm.section_id = s.section_id
+WHERE e.student_id = :sid
+ORDER BY cm.day_of_week, cm.start_time
+"""
+
+ROOM_MEETINGS = """
+SELECT u.day_of_week, u.start_time, u.end_time, u.section_id, u.course_code, u.section_no, c.name_th,
+       (SELECT group_concat(i.full_name, ', ') FROM section_instructor si
+          JOIN instructor i ON i.instructor_id = si.instructor_id WHERE si.section_id = u.section_id) AS teachers
+FROM v_room_usage u
+JOIN term t   ON t.term_id = u.term_id AND t.is_current = 1
+JOIN course c ON c.course_code = u.course_code
+WHERE u.room_code = :room
+ORDER BY u.day_of_week, u.start_time
+"""
+
+INSTRUCTOR_MEETINGS = """
+SELECT b.day_of_week, b.start_time, b.end_time, b.section_id, b.course_code, b.section_no, c.name_th, cm.room_code
+FROM v_instructor_busy b
+JOIN term t           ON t.term_id = b.term_id AND t.is_current = 1
+JOIN course c         ON c.course_code = b.course_code
+JOIN class_meeting cm ON cm.meeting_id = b.meeting_id
+WHERE b.instructor_id = :iid
+ORDER BY b.day_of_week, b.start_time
+"""

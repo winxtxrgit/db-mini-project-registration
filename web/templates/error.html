@@ -1,5 +1,13 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% block title %}{{ code }}{% endblock %}
 {% block content %}
-<div class="card"><h1>{{ code }}</h1><p>{{ message }}</p><p><a href="{{ url_for('index') }}">กลับหน้าแรก</a></p></div>
+<div class="auth">
+  <div class="auth-card error-page">
+    <div class="code">{{ code }}</div>
+    <h1>{{ {403: 'ไม่มีสิทธิ์เข้าหน้านี้', 400: 'คำขอไม่ถูกต้อง', 404: 'ไม่พบหน้านี้'}.get(code, 'เกิดข้อผิดพลาด') }}</h1>
+    <p class="sub">{{ message }}</p>
+    <a class="btn primary" href="{{ url_for('index') }}">{{ ui.icon('back', 'i-sm') }}กลับหน้าแรก</a>
+  </div>
+</div>
 {% endblock %}

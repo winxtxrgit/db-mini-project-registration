@@ -195,7 +195,7 @@ def student_act(sid, action, section_id):
     if action not in ACTIONS:
         abort(404)
     ACTIONS[action](sid, section_id)
-    return redirect(url_for("admin.student_view", sid=sid) + "#register")
+    return redirect(url_for("admin.student_view", sid=sid, _anchor=f"sec{section_id}"))
 
 
 @bp.route("/credits")

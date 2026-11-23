@@ -1,18 +1,25 @@
-<p class="sub">เรียงตามสิทธิ์ (1 วิชาค้าง → 2 วิชาบังคับเทอมนี้ → 3 อื่นๆ) แล้วตามเวลาที่ขอ · ระบบเลื่อนเฉพาะคนที่ "ลงได้จริง" (ไม่ชน มีที่ หน่วยกิตไม่เกิน ผ่านวิชาบังคับก่อน)</p>
+{# ใช้ใน dashboard และ sections · ต้องมีตัวแปร queue #}
+{% import "_ui.html" as ui %}
+<p class="sub" style="padding: 0 var(--s5)">เรียงตามสิทธิ์ (1 วิชาค้าง → 2 วิชาบังคับเทอมนี้ → 3 อื่นๆ) แล้วตามเวลาที่ขอ · ระบบเลื่อนเฉพาะคนที่ลงได้จริง (ไม่ชน มีที่ หน่วยกิตไม่เกิน ผ่านวิชาบังคับก่อน)</p>
 {% if queue %}
-<div class="table-scroll"><table>
-  <tr><th>วิชา</th><th class="num">ลำดับ</th><th>นักศึกษา</th><th>สิทธิ์</th><th>ขอเมื่อ</th><th>เลื่อนได้?</th><th></th></tr>
+<div class="table-scroll"><table class="stack">
+  <thead><tr><th scope="col">วิชา</th><th scope="col" class="num">ลำดับ</th><th scope="col">นักศึกษา</th><th scope="col">สิทธิ์</th><th scope="col">ขอเมื่อ</th><th scope="col">เลื่อนได้หรือไม่</th><th scope="col" class="actions"><span class="sr-only">การทำรายการ</span></th></tr></thead>
+  <tbody>
   {% for r in queue %}
-  <tr><td>{{ r.course_code }} {{ r.name_th }} กลุ่ม {{ r.section_no }}</td><td class="num">{{ r.queue_no }}</td>
-    <td><a href="{{ url_for('admin.student_view', sid=r.student_id) }}">{{ r.student_id }}</a> {{ r.student_name }}</td>
-    <td>{{ r.priority }}</td><td>{{ r.requested_at[:16] }}</td>
-    <td>{% if not r.no_conflict %}<span class="tag bad">เวลาชน</span>
-        {% elif not r.credits_ok %}<span class="tag bad">หน่วยกิตเกิน</span>
-        {% elif not r.prereq_ok %}<span class="tag bad">ไม่ผ่านวิชาบังคับก่อน</span>
-        {% elif r.seats_left <= 0 %}<span class="tag warn">รอที่ว่าง</span>
-        {% else %}<span class="tag ok">ได้</span>{% endif %}</td>
-    <td><form method="post" class="inline" action="{{ url_for('admin.waitlist_remove', sid=r.student_id, section_id=r.section_id) }}">
-      {{ csrf_field() }}<button class="btn danger">เอาออก</button></form></td></tr>
+  <tr>
+    <td class="primary-cell"><span class="code">{{ r.course_code }}</span> {{ r.name_th }} · กลุ่ม {{ r.section_no }}</td>
+    <td class="num" data-label="ลำดับ">{{ r.queue_no }}</td>
+    <td data-label="นักศึกษา"><a href="{{ url_for('admin.student_view', sid=r.student_id) }}">{{ r.student_id }}</a> {{ r.student_name }}</td>
+    <td data-label="สิทธิ์">{{ {1:'1 วิชาค้าง', 2:'2 วิชาบังคับ', 3:'3 อื่นๆ'}[r.priority] }}</td>
+    <td class="nowrap" data-label="ขอเมื่อ">{{ r.requested_at[:16] }}</td>
+    <td data-label="เลื่อนได้หรือไม่">{% if not r.no_conflict %}{{ ui.tag('bad', 'ไม่ได้ · เวลาชน', 'x') }}
+        {% elif not r.credits_ok %}{{ ui.tag('bad', 'ไม่ได้ · หน่วยกิตเกิน', 'x') }}
+        {% elif not r.prereq_ok %}{{ ui.tag('bad', 'ไม่ได้ · ไม่ผ่านวิชาบังคับก่อน', 'x') }}
+        {% elif r.seats_left <= 0 %}{{ ui.tag('warn', 'รอที่ว่าง', 'hourglass') }}
+        {% else %}{{ ui.tag('ok', 'ได้', 'check') }}{% endif %}</td>
+    <td class="actions" data-label="">{{ ui.action_form(url_for('admin.waitlist_remove', sid=r.student_id, section_id=r.section_id), 'เอาออก', 'btn sm danger', aria='เอา ' ~ r.student_id ~ ' ออกจากคิว ' ~ r.course_code) }}</td>
+  </tr>
   {% endfor %}
+  </tbody>
 </table></div>
-{% else %}<p class="empty">ยังไม่มีใครอยู่ในคิว</p>{% endif %}
+{% else %}<div class="card-pad">{{ ui.empty('ยังไม่มีใครอยู่ในคิว', 'check') }}</div>{% endif %}

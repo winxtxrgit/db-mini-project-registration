@@ -1,45 +1,80 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% block title %}ฝ่ายทะเบียน · ภาพรวม{% endblock %}
+{% set short = demand|selectattr('alert')|list %}
+{% set ready = queue|selectattr('eligible')|list %}
 {% block content %}
-<h1>ภาพรวมการลงทะเบียน</h1>
-<p class="sub">ภาคเรียน {{ term.term_id }} ·
-  {% if term.reg_is_open %}<span class="tag ok">เปิดลงทะเบียน {{ term.reg_open_at }} ถึง {{ term.reg_close_at }}</span>
-  {% else %}<span class="tag bad">ปิดลงทะเบียน</span>{% endif %}
-  · เพดาน {{ term.max_credits }} หน่วยกิต · <a href="{{ url_for('admin.terms') }}">แก้ไข</a></p>
+{% call ui.page_header('ภาพรวมการลงทะเบียน', 'ภาคเรียน ' ~ term.term_id ~ ' · เพดาน ' ~ term.max_credits ~ ' หน่วยกิตต่อภาค') %}
+  <a class="btn" href="{{ url_for('admin.terms') }}">{{ ui.icon('calendar', 'i-sm') }}ตั้งค่าภาคเรียน</a>
+  <a class="btn primary" href="{{ url_for('admin.students') }}">{{ ui.icon('cap', 'i-sm') }}ทำรายการแทนนักศึกษา</a>
+{% endcall %}
 
-<section class="card">
-  <h2>R4 ความต้องการที่นั่งวิชาบังคับ เทียบกับที่เปิด</h2>
-  <p class="sub">จำนวนนักศึกษาที่วิชานี้ถึงกำหนดตามแผนแล้วแต่ยังไม่ผ่าน</p>
-  <div class="table-scroll"><table>
-    <tr><th>วิชา</th><th class="num">ต้องเรียน</th><th class="num">กลุ่มที่เปิด</th><th class="num">ที่นั่ง</th><th class="num">ว่าง</th><th></th></tr>
+<div class="stats">
+  {% if term.reg_is_open %}
+    {{ ui.stat('ช่วงลงทะเบียน', 'เปิดอยู่', 'ถึง ' ~ term.reg_close_at, 'ok', url_for('admin.terms'), 'calendar', text=True) }}
+  {% else %}
+    {{ ui.stat('ช่วงลงทะเบียน', 'ปิดอยู่', (term.reg_open_at ~ ' ถึง ' ~ term.reg_close_at) if term.reg_open_at else 'ยังไม่ตั้งช่วงลงทะเบียน', 'bad', url_for('admin.terms'), 'lock', text=True) }}
+  {% endif %}
+  {{ ui.stat('วิชาบังคับที่ที่นั่งไม่พอ', short|length, 'เต็มหรือไม่เปิดสอน แต่ยังมีคนต้องเรียน', 'bad' if short else 'ok', '#demand', 'alert', 'วิชา') }}
+  {{ ui.stat('ที่นั่งถูกล็อกด้วยโควตา', locked|length, 'โควตาหลักสูตรเต็ม ทั้งที่กลุ่มยังว่าง', 'warn' if locked else 'ok', '#locked', 'lock', 'กลุ่ม') }}
+  {{ ui.stat('คนในคิวสำรอง', queue|length, (ready|length ~ ' คนเลื่อนได้ทันที') if ready else 'ไม่มีใครเลื่อนได้ตอนนี้', 'info' if queue else '', '#queue', 'hourglass', 'คน') }}
+</div>
+
+<section class="card flush" id="demand" aria-labelledby="demand-h">
+  {{ ui.card_head('ความต้องการที่นั่งวิชาบังคับ เทียบกับที่เปิด', ('R4',), 'จำนวนนักศึกษาที่วิชานี้ถึงกำหนดตามแผนแล้วแต่ยังไม่ผ่าน เทียบกับที่นั่งของทุกกลุ่มในภาคปัจจุบัน', 'chart', id='demand-h') }}
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">วิชา</th><th scope="col" class="num">ต้องเรียน</th><th scope="col" class="num">กลุ่มที่เปิด</th>
+      <th scope="col">ที่นั่งที่เปิด เทียบความต้องการ</th><th scope="col" class="num">ว่าง</th><th scope="col">สถานะ</th></tr></thead>
+    <tbody>
     {% for r in demand %}
-    <tr><td>{{ r.course_code }} {{ r.name_th }}</td><td class="num">{{ r.students_need }}</td>
-      <td class="num">{{ r.sections }}</td><td class="num">{{ r.seats }}</td><td class="num">{{ r.available }}</td>
-      <td>{% if r.alert %}<span class="tag bad">{{ r.alert }}</span>{% endif %}</td></tr>
+    <tr>
+      <td class="primary-cell"><span class="code">{{ r.course_code }}</span> {{ r.name_th }}</td>
+      <td class="num" data-label="ต้องเรียน">{{ r.students_need }}</td>
+      <td class="num" data-label="กลุ่มที่เปิด">{{ r.sections }}</td>
+      <td data-label="ที่นั่ง">{{ ui.meter(r.students_need, r.seats, 'ต้องเรียน/ที่นั่ง', 'bad' if r.seats < r.students_need else 'ok') }}</td>
+      <td class="num" data-label="ว่าง">{{ r.available }}</td>
+      <td data-label="สถานะ">{% if r.alert %}{{ ui.tag('bad', r.alert, 'alert') }}{% elif r.seats < r.students_need %}{{ ui.tag('warn', 'ที่นั่งน้อยกว่าคนที่ต้องเรียน', 'alert') }}{% else %}{{ ui.tag('ok', 'พอ', 'check') }}{% endif %}</td>
+    </tr>
     {% endfor %}
+    </tbody>
   </table></div>
 </section>
 
-<section class="card">
-  <h2>R5 ที่นั่งถูกล็อกด้วยโควตาหลักสูตร</h2>
-  <p class="sub">โควตาของหลักสูตรหนึ่งเต็มแล้ว ทั้งที่กลุ่มเรียนยังมีที่ว่าง → ปรับโควตาได้ที่หน้า <a href="{{ url_for('admin.sections') }}">กลุ่มเรียนและคิว</a></p>
+<section class="card flush" id="locked" aria-labelledby="locked-h">
+  {{ ui.card_head('ที่นั่งถูกล็อกด้วยโควตาหลักสูตร', ('R5',), 'โควตาของหลักสูตรหนึ่งเต็มแล้ว ทั้งที่กลุ่มเรียนยังมีที่ว่าง · ปรับโควตาได้ที่หน้ากลุ่มเรียนและคิว', 'lock', id='locked-h') }}
   {% if locked %}
-  <div class="table-scroll"><table>
-    <tr><th>วิชา</th><th>กลุ่ม</th><th>หลักสูตร</th><th class="num">ใช้โควตา</th><th class="num">ทั้งกลุ่ม</th><th class="num">ยังว่าง</th></tr>
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">วิชา</th><th scope="col">กลุ่ม</th><th scope="col">หลักสูตร</th><th scope="col">ใช้โควตา</th><th scope="col">ทั้งกลุ่ม</th><th scope="col" class="num">ยังว่าง</th><th scope="col" class="actions"><span class="sr-only">การทำรายการ</span></th></tr></thead>
+    <tbody>
     {% for r in locked %}
-    <tr><td>{{ r.course_code }} {{ r.name_th }}</td><td>{{ r.sec }}</td><td>{{ r.curriculum_id }}</td>
-      <td class="num"><span class="tag bad">{{ r.used }}/{{ r.seats }}</span></td>
-      <td class="num">{{ r.enrolled }}/{{ r.capacity }}</td><td class="num">{{ r.section_free }}</td></tr>
+    <tr>
+      <td class="primary-cell"><span class="code">{{ r.course_code }}</span> {{ r.name_th }}</td>
+      <td data-label="กลุ่ม">{{ r.sec }}</td><td data-label="หลักสูตร">{{ r.curriculum_id }}</td>
+      <td data-label="ใช้โควตา">{{ ui.meter(r.used, r.seats, '', 'bad') }}</td>
+      <td data-label="ทั้งกลุ่ม">{{ ui.meter(r.enrolled, r.capacity) }}</td>
+      <td class="num" data-label="ยังว่าง">{{ r.section_free }}</td>
+      <td class="actions" data-label=""><a class="btn sm" href="{{ url_for('admin.sections', _anchor='sec' ~ r.section_id) }}">ปรับโควตา</a></td>
+    </tr>
     {% endfor %}
+    </tbody>
   </table></div>
-  {% else %}<p class="empty">ไม่มี</p>{% endif %}
+  {% else %}<div class="card-pad">{{ ui.empty('ไม่มีกลุ่มที่ถูกล็อกด้วยโควตา', 'check') }}</div>{% endif %}
 </section>
 
-<section class="card">
-  <h2>คิวสำรอง</h2>
+<section class="card flush" id="queue" aria-labelledby="queue-h">
+  {{ ui.card_head('คิวสำรอง', (), None, 'hourglass', id='queue-h') }}
   {% include "admin/_queue.html" %}
 </section>
 
-<form method="post" action="{{ url_for('admin.reset') }}">{{ csrf_field() }}
-  <button class="btn danger" title="ลบทุกอย่างที่ทดลองทำ แล้วโหลด seed.sql ใหม่">รีเซ็ตข้อมูลสาธิต</button></form>
+<section class="card danger-zone" aria-labelledby="reset-h">
+  {{ ui.card_head('รีเซ็ตข้อมูลสาธิต', (), 'ลบทุกอย่างที่ทดลองทำ (การลงทะเบียน คิว ประวัติ การแก้ตาราง) แล้วโหลด seed.sql ใหม่ · ย้อนกลับไม่ได้', 'alert', id='reset-h') }}
+  <form method="post" action="{{ url_for('admin.reset') }}" class="form-row">{{ csrf_field() }}
+    <div class="field">
+      <label for="reset-confirm">พิมพ์คำว่า <strong>รีเซ็ต</strong> เพื่อยืนยัน</label>
+      <input id="reset-confirm" name="confirm" required pattern="รีเซ็ต" autocomplete="off" aria-describedby="reset-help">
+      <span class="help" id="reset-help">ป้องกันการกดโดยไม่ตั้งใจ</span>
+    </div>
+    <button class="btn danger solid">{{ ui.icon('trash', 'i-sm') }}รีเซ็ตข้อมูลสาธิต</button>
+  </form>
+</section>
 {% endblock %}

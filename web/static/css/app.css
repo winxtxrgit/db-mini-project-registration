@@ -13,15 +13,15 @@
   --muted: #4b5563;
   --line: #e5e7eb;
   --line-strong: #8a94a3;      /* เส้นขอบช่องกรอก ต้องได้ ≥3:1 กับพื้น */
-  --primary: #1e40af;
-  --primary-hover: #1e3a8a;
+  --primary: #00589a;          /* น้ำเงินตามตราสถาบันเทคโนโลยีจิตรลดา */
+  --primary-hover: #00467b;
   --on-primary: #ffffff;
-  --primary-soft: #eff4ff;
+  --primary-soft: #e8f1f9;
   --focus: #2563eb;
   --ok: #166534;   --ok-bg: #dcfce7;   --ok-line: #86efac;
   --bad: #991b1b;  --bad-bg: #fee2e2;  --bad-line: #fca5a5;
   --warn: #854d0e; --warn-bg: #fef9c3; --warn-line: #fde047;
-  --info: #1e40af; --info-bg: #dbeafe; --info-line: #93c5fd;
+  --info: #00589a; --info-bg: #dbeafe; --info-line: #93c5fd;
   --neutral: #374151; --neutral-bg: #eef0f3;
   --target: #fff7d6;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%);
@@ -44,7 +44,7 @@
     color-scheme: dark;
     --bg: #0b1220; --surface: #111827; --surface-2: #162032; --surface-3: #1f2937;
     --ink: #f3f4f6; --muted: #a3acb9; --line: #2b3646; --line-strong: #6b7686;
-    --primary: #60a5fa; --primary-hover: #93c5fd; --on-primary: #0b1220; --primary-soft: #172554;
+    --primary: #5aaee8; --primary-hover: #8cc8f0; --on-primary: #0b1220; --primary-soft: #0f2a44;
     --focus: #93c5fd;
     --ok: #86efac; --ok-bg: #052e16; --ok-line: #166534;
     --bad: #fca5a5; --bad-bg: #450a0a; --bad-line: #991b1b;
@@ -60,7 +60,7 @@
   color-scheme: dark;
   --bg: #0b1220; --surface: #111827; --surface-2: #162032; --surface-3: #1f2937;
   --ink: #f3f4f6; --muted: #a3acb9; --line: #2b3646; --line-strong: #6b7686;
-  --primary: #60a5fa; --primary-hover: #93c5fd; --on-primary: #0b1220; --primary-soft: #172554;
+  --primary: #5aaee8; --primary-hover: #8cc8f0; --on-primary: #0b1220; --primary-soft: #0f2a44;
   --focus: #93c5fd;
   --ok: #86efac; --ok-bg: #052e16; --ok-line: #166534;
   --bad: #fca5a5; --bad-bg: #450a0a; --bad-line: #991b1b;
@@ -117,6 +117,16 @@ main:focus { outline: none; }
 .brand:hover { color: var(--ink); }
 .brand-mark { width: 32px; height: 32px; border-radius: 8px; background: var(--primary); color: var(--on-primary);
               display: grid; place-items: center; flex: none; }
+/* ตราสถาบัน: ใช้ไฟล์ต้นฉบับ ไม่ปรับสีหรือตัดส่วนใด · โหมดมืดวางบนพื้นขาวเพื่อให้ตรายังเห็นชัด */
+.logo { display: block; height: 40px; width: auto; flex: none; }
+.logo-wrap { display: grid; place-items: center; flex: none; border-radius: 8px; }
+:root[data-theme="dark"] .logo-wrap { background: #fff; padding: 2px 4px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo-wrap { background: #fff; padding: 2px 4px; } }
+.auth-logo { display: flex; justify-content: center; margin-bottom: var(--s4); }
+.auth-logo .logo { height: 112px; }
+.auth-logo .logo-wrap { padding: 8px 12px; border-radius: 14px; }
+.auth-card.branded { text-align: center; }
+.auth-card.branded form, .auth-card.branded .auth-note { text-align: left; }
 .brand-text { overflow: hidden; text-overflow: ellipsis; }
 .brand-text small { display: block; font-weight: 400; color: var(--muted); font-size: var(--fs-xs); line-height: 1.2; }
 
@@ -458,6 +468,7 @@ details.disclosure > .body { padding: var(--s4); }
 .auth-card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
              padding: var(--s6); box-shadow: var(--shadow-pop); }
 .auth-card .brand-mark { width: 44px; height: 44px; border-radius: 12px; margin-bottom: var(--s4); }
+@media (max-width: 720px) { .logo { height: 34px; } }
 .auth-card h1 { margin-bottom: var(--s1); }
 .auth-card form { display: flex; flex-direction: column; gap: var(--s4); margin-top: var(--s5); }
 .auth-card input { width: 100%; }

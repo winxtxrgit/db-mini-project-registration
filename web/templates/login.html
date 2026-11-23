@@ -3,8 +3,8 @@
 {% block title %}เข้าสู่ระบบ{% endblock %}
 {% block content %}
 <div class="auth">
-  <div class="auth-card">
-    <span class="brand-mark">{{ ui.icon('cap', 'i-lg') }}</span>
+  <div class="auth-card branded">
+    <div class="auth-logo"><span class="logo-wrap"><img class="logo" src="{{ url_for('static', filename='img/cdti-logo.png') }}" alt="ตราสถาบันเทคโนโลยีจิตรลดา" width="90" height="112"></span></div>
     <h1>เข้าสู่ระบบ</h1>
     <p class="sub">ระบบวางแผนและตรวจสอบการลงทะเบียนตามแผนการเรียน</p>
     <form method="post">

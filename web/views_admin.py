@@ -53,12 +53,13 @@ def _datetime_or_none(name: str):
 @require("admin")
 def term_update(term_id):
     try:
-        params = (_datetime_or_none("reg_open_at"), _datetime_or_none("reg_close_at"),
-                  form_int("max_credits"), term_id)
+        params = tuple(_datetime_or_none(f"{w}_{e}_at") for w in ("reg", "add", "drop") for e in ("open", "close")) \
+            + (form_int("max_credits"), term_id)
     except ValueError as exc:
         flash(f"ไม่สำเร็จ: {exc}", "error")
         return back("admin.terms")
-    write([("UPDATE term SET reg_open_at = ?, reg_close_at = ?, max_credits = ? WHERE term_id = ?", params)],
+    write([("UPDATE term SET reg_open_at = ?, reg_close_at = ?, add_open_at = ?, add_close_at = ?, "
+            "drop_open_at = ?, drop_close_at = ?, max_credits = ? WHERE term_id = ?", params)],
           f"บันทึกภาคเรียน {term_id} แล้ว")
     return back("admin.terms")
 

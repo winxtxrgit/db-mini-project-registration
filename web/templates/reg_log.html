@@ -32,9 +32,9 @@
     {% set k, text, ic = ACTION[r.action] %}
     <tr>
       <td class="num muted" data-label="#">{{ r.log_id }}</td>
-      <td class="nowrap" data-label="เวลา">{{ r.logged_at }}</td>
+      <td class="nowrap" data-label="เวลา">{{ r.logged_at|thdatetime }}</td>
       <td data-label="นักศึกษา">{% if g.user.role == 'admin' %}<a href="{{ url_for('admin.student_view', sid=r.student_id) }}">{{ r.student_id }}</a>{% else %}{{ r.student_id }}{% endif %} {{ r.student_name }}</td>
-      <td class="primary-cell"><span class="code">{{ r.course_code }}</span> {{ r.name_th }} · กลุ่ม {{ r.section_no }}</td>
+      <td class="primary-cell"><a class="code" href="{{ url_for('course_detail', code=r.course_code) }}">{{ r.course_code }}</a> {{ r.name_th }} · กลุ่ม {{ r.section_no }}</td>
       <td data-label="รายการ">{{ ui.tag(k, text, ic) }}</td>
       <td data-label="ผู้ทำรายการ">{{ r.actor }}{% if r.actor_role %} <span class="muted">({{ ROLE_NAME[r.actor_role] }})</span>{% endif %}</td>
     </tr>

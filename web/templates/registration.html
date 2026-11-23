@@ -28,13 +28,15 @@
 
 {# ---------------------------------------------------------------- สรุปสถานะ #}
 <div class="stats">
-  {% if s.reg_is_open %}
-    {{ ui.stat('ช่วงลงทะเบียน', 'เปิดอยู่', 'ปิด ' ~ s.reg_close_at, 'ok', ic='calendar', text=True) }}
-  {% else %}
-    {{ ui.stat('ช่วงลงทะเบียน', 'ปิดอยู่',
-               (s.reg_open_at ~ ' ถึง ' ~ s.reg_close_at) if s.reg_open_at else 'ยังไม่ประกาศช่วงลงทะเบียน',
-               'bad', ic='lock', text=True) }}
-  {% endif %}
+  {% set ph = term_phase(s) %}
+  {% call ui.stat('ตอนนี้', ph.label, ph.detail, ph.kind, ic='calendar' if ph.open else 'lock', text=True) %}
+    <dl class="kv windows">
+      {% for key, name in [('reg', 'ลงทะเบียน'), ('add', 'เพิ่มวิชา'), ('drop', 'ลดวิชา')] %}
+        {% set o, c = s[key ~ '_open_at'], s[key ~ '_close_at'] %}
+        <dt>{{ name }}</dt><dd class="{{ 'on' if s[key ~ '_is_open'] }}">{% if o %}{{ o|thdatetime }} – {{ c|thdatetime }}{% else %}–{% endif %}</dd>
+      {% endfor %}
+    </dl>
+  {% endcall %}
   {% call ui.stat('หน่วยกิตที่ลงแล้ว', s.credits, 'เพดาน ' ~ s.max_credits ~ ' หน่วยกิตต่อภาค',
                   'warn' if s.credits >= s.max_credits else 'info', ic='book', unit='/ ' ~ s.max_credits) %}
     {{ ui.meter(s.credits, s.max_credits, 'หน่วยกิต', cls='lg') }}
@@ -63,7 +65,7 @@
     <tbody>
     {% for r in plan %}
     <tr>
-      <td class="primary-cell"><span class="code">{{ r.course_code }}</span> {{ r.name_th }}</td>
+      <td class="primary-cell"><a class="code" href="{{ url_for('course_detail', code=r.course_code) }}">{{ r.course_code }}</a> {{ r.name_th }}</td>
       <td data-label="แผน ปี/ภาค">{{ r.plan_term }}</td>
       <td data-label="สถานะ">
         {% if r.status.startswith('ลงแล้ว') %}{{ ui.tag('ok', r.status, 'check') }}
@@ -94,9 +96,10 @@
 {# ---------------------------------------------------------------- ลงทะเบียน #}
 {% set n_plan = sections|selectattr('plan_term')|list|length %}
 {% set n_mine = sections|selectattr('is_enrolled')|list|length %}
-{% set ns = namespace(can=0, full=0) %}
+{% set ns = namespace(can=0, full=0, free=0) %}
 {% for r in sections %}
   {% if not r.is_enrolled and not r.is_waiting and not r.class_clash and not r.exam_clash and not r.over_credit and r.seats_left > 0 %}{% set ns.can = ns.can + 1 %}{% endif %}
+  {% if not r.is_enrolled and not r.class_clash and not r.exam_clash %}{% set ns.free = ns.free + 1 %}{% endif %}
   {% if not r.is_enrolled and r.seats_left <= 0 %}{% set ns.full = ns.full + 1 %}{% endif %}
 {% endfor %}
 <section class="card flush" id="register" aria-labelledby="reg-h" data-filter-scope>
@@ -104,7 +107,21 @@
   <div class="toolbar">
     {{ ui.filter_search('ค้นหารหัสหรือชื่อวิชา', 'ค้นหารายวิชา', 'q-sec') }}
     {{ ui.filter_chips([('all', 'ทั้งหมด', sections|length), ('plan', 'ตามแผน', n_plan), ('can', 'ลงได้', ns.can),
-                        ('mine', 'ลงแล้ว', n_mine), ('full', 'เต็ม', ns.full)], 'กรองรายวิชา') }}
+                        ('free', 'เวลาไม่ชน', ns.free), ('mine', 'ลงแล้ว', n_mine), ('full', 'เต็ม', ns.full)], 'กรองรายวิชา') }}
+    <div class="row js-only">
+      <label class="sr-only" for="f-day">วันเรียน</label>
+      <select id="f-day" data-filter-select>
+        <option value="">ทุกวัน</option>
+        {% for d, name in DAYS.items() if d <= 6 %}<option value="d{{ d }}">เรียนวัน{{ name }}</option>{% endfor %}
+      </select>
+      <label class="sr-only" for="f-period">ช่วงเวลา</label>
+      <select id="f-period" data-filter-select>
+        <option value="">ทุกช่วงเวลา</option>
+        <option value="am">เช้า (ก่อน 12:00)</option>
+        <option value="pm">บ่าย (12:00–16:00)</option>
+        <option value="ev">เย็น (หลัง 16:00)</option>
+      </select>
+    </div>
     <span class="sr-only" data-filter-status aria-live="polite"></span>
   </div>
   <div class="table-scroll"><table class="stack">
@@ -113,12 +130,18 @@
     <tbody>
     {% for r in sections %}
     {% set can = not r.is_enrolled and not r.is_waiting and not r.class_clash and not r.exam_clash and not r.over_credit and r.seats_left > 0 %}
-    {% set tags = ['plan' if r.plan_term, 'can' if can, 'mine' if r.is_enrolled or r.is_waiting, 'full' if (not r.is_enrolled and r.seats_left <= 0)]|select|join(' ') %}
+    {% set slot_tags = [] %}
+    {% for sl in (r.slots or '').split() %}{% set d, t = sl.split('@') %}
+      {% set _ = slot_tags.extend(['d' ~ d, 'am' if t < '12:00' else ('pm' if t < '16:00' else 'ev')]) %}
+    {% endfor %}
+    {% set tags = (['plan' if r.plan_term, 'can' if can, 'free' if (not r.is_enrolled and not r.class_clash and not r.exam_clash),
+                    'mine' if r.is_enrolled or r.is_waiting, 'full' if (not r.is_enrolled and r.seats_left <= 0)] + slot_tags)|select|unique|join(' ') %}
     <tr id="sec{{ r.section_id }}" class="{{ 'mine' if r.is_enrolled }}" data-filter-item data-tags="{{ tags }}" data-text="{{ r.course_code }} {{ r.name_th }}">
-      <td class="primary-cell"><span class="code">{{ r.course_code }}</span> {{ r.name_th }}<span class="cell-sub">{{ r.credits }} หน่วยกิต</span></td>
+      <td class="primary-cell"><a class="code" href="{{ url_for('course_detail', code=r.course_code) }}" title="ดูรายละเอียดวิชา">{{ r.course_code }}</a> {{ r.name_th }}
+        <span class="cell-sub">{{ r.credit_pattern or (r.credits ~ ' หน่วยกิต') }}{% if r.teachers %} · {{ r.teachers }}{% endif %}</span></td>
       <td data-label="กลุ่ม">{{ r.section_no }}</td>
       <td data-label="เวลาเรียน">{{ r.class_time or '–' }}</td>
-      <td data-label="สอบ">{{ r.exam_time or '–' }}</td>
+      <td data-label="สอบ">{{ r.exam_time|thdate or '–' }}</td>
       <td data-label="ที่นั่ง">
         {{ ui.meter(r.enrolled, r.capacity, 'คน') }}
         <span class="cell-sub">{% if r.seats_left > 0 %}เหลือสำหรับคุณ {{ r.seats_left }} ที่{% else %}ไม่เหลือที่สำหรับคุณ{% endif %}</span>
@@ -157,7 +180,7 @@
   <ul class="list">
     {% for date, items in exams|groupby('exam_date') %}
     <li>
-      <strong class="nowrap">{{ date }}</strong>
+      <strong class="nowrap">{{ date|thdate }}</strong>
       {% if items|length > 1 %}{{ ui.tag('warn', 'สอบ ' ~ items|length ~ ' วิชาวันนี้', 'alert') }}{% endif %}
       <div style="flex-basis:100%">
         {% for x in items %}<div class="row"><span class="nowrap code">{{ x.time }}</span><span>{{ x.course_code }} {{ x.name_th }}</span><span class="muted">ห้อง {{ x.room }}</span></div>{% endfor %}
@@ -176,7 +199,7 @@
     {% for r in backlog %}
     <li>{{ ui.tag('bad', r.clash ~ 'ชน', 'x') }}
       <span><strong>{{ r.backlog_course }}</strong> (วิชาค้าง) ชนกับ <strong>{{ r.plan_course }}</strong></span>
-      <span class="muted">{{ r.day_or_date }} {{ r.backlog_time }}</span></li>
+      <span class="muted">{{ r.day_or_date|thdate }} {{ r.backlog_time }}</span></li>
     {% endfor %}
   </ul>
   {% else %}{{ ui.empty('ไม่มีวิชาค้างที่ชนกับวิชาตามแผนเทอมนี้', 'check') }}{% endif %}
@@ -195,7 +218,7 @@
       <td class="primary-cell"><span class="code">{{ w.course_code }}</span> {{ w.name_th }} · กลุ่ม {{ w.section_no }}</td>
       <td class="num" data-label="ลำดับคิว">{{ w.queue_no }}</td>
       <td data-label="สิทธิ์">{{ {1:'1 วิชาค้าง', 2:'2 วิชาบังคับเทอมนี้', 3:'3 อื่นๆ'}[w.priority] }}</td>
-      <td data-label="ขอเมื่อ">{{ w.requested_at[:16] }}</td>
+      <td data-label="ขอเมื่อ">{{ w.requested_at[:16]|thdatetime }}</td>
       <td data-label="สถานะ">{% if not w.no_conflict %}{{ ui.tag('bad', 'เวลาชน จะไม่ถูกเลื่อน', 'x') }}
           {% elif not w.credits_ok %}{{ ui.tag('bad', 'หน่วยกิตจะเกิน จะไม่ถูกเลื่อน', 'x') }}
           {% else %}{{ ui.tag('warn', 'รอที่ว่าง', 'hourglass') }}{% endif %}</td>

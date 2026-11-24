@@ -135,6 +135,39 @@ class StudentTests(Base):
         self.assertEqual(actor[0][0], "6799000001")
         self.assertEqual(self.sql("SELECT COUNT(*) FROM app_session")[0][0], 0)   # ไม่ค้างหลังทำรายการ
 
+    def test_waitlist_and_unwait(self):
+        # section 7 (310-3313) เต็มแล้ว 21/21
+        # 6799000005 มีสิทธิ์ลงและยังไม่เคยลงวิชานี้ จึงสามารถเข้าคิวสำรองได้
+        self.login("6799000005")
+        r = self.post("/me/waitlist/7")
+        self.assertTrue(any(lvl == "ok" and "เข้าคิวสำรอง" in msg and "310-3313" in msg for lvl, msg in flashes(r)))
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM waitlist WHERE student_id='6799000005' AND section_id=7")[0][0], 1)
+
+        # ออกจากคิว (unwait)
+        r = self.post("/me/unwait/7")
+        self.assertTrue(any(lvl == "ok" and "ออกจากคิว" in msg and "310-3313" in msg for lvl, msg in flashes(r)))
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM waitlist WHERE student_id='6799000005' AND section_id=7")[0][0], 0)
+
+    def test_missing_prerequisite_rejected(self):
+        # 6799000005 ต้องการลง 310-3416 (section 5) ซึ่งมีวิชาบังคับก่อนคือ 310-2101
+        # เมื่อลบวิชาบังคับก่อนออกจาก transcript จะต้องถูกปฏิเสธ
+        self.login("6799000005")
+        self.sql("DELETE FROM transcript WHERE student_id = '6799000005' AND course_code = '310-2101'")
+        r = self.post("/me/enroll/5")
+        self.assertIn(("error", "ไม่สำเร็จ: ยังไม่ผ่านวิชาบังคับก่อน"), flashes(r))
+
+    def test_max_credits_rejected_web(self):
+        # 6799000005 ลงอยู่แล้ว 6 หน่วยกิต (section 2 และ 3)
+        # เมื่อลดเพดานเป็น 6 แล้วพยายามลงเพิ่มใน section 4 (3 หน่วยกิต) จะต้องถูกปฏิเสธ
+        self.login("6799000005")
+        self.sql("UPDATE term SET max_credits = 6 WHERE is_current = 1")
+        r = self.post("/me/enroll/4")
+        self.assertIn(("error", "ไม่สำเร็จ: หน่วยกิตรวมเกินเพดานที่ลงได้ในภาคเรียนนี้"), flashes(r))
+
+    def test_invalid_action_404(self):
+        r = self.post("/me/invalid_action/1")
+        self.assertEqual(r.status_code, 404)
+
 
 class AdminTests(Base):
     def setUp(self):

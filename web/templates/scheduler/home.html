@@ -136,7 +136,7 @@
               {{ time_field('xs' ~ x.exam_id, 'start_time', 'เริ่ม', x.start_time) }}
               {{ time_field('xe' ~ x.exam_id, 'end_time', 'จบ', x.end_time) }}
               <div class="field"><label for="xr{{ x.exam_id }}">ห้องสอบ {{ ui.rcode('R13') }}</label>
-                <select id="xr{{ x.exam_id }}" name="room_code">
+                <select id="xr{{ x.exam_id }}" name="room_code" style="min-width: 14rem">
                   <option value="">ไม่ระบุห้อง</option>
                   {% for r in exam_rooms[x.exam_id] %}
                     <option value="{{ r.room_code }}" {{ 'selected' if r.room_code == x.room_code }}>{{ r.room_code }} · {{ r.result }}</option>

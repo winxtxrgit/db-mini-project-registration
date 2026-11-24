@@ -29,7 +29,7 @@
       <tr>
         <td class="primary-cell"><strong>{{ r.day }}</strong></td>
         <td class="nowrap">{{ r.time }}</td>
-        <td class="code"><a href="{{ url_for('course_detail', code=r.course_code) }}">{{ r.course_code }}</a></td>
+        <td class="code nowrap"><a href="{{ url_for('course_detail', code=r.course_code) }}">{{ r.course_code }}</a></td>
         <td data-label="ชื่อวิชา">{{ r.course_name }}</td>
         <td data-label="กลุ่ม">{{ r.section_no }}</td>
         <td data-label="ห้อง">{{ r.room_code }}</td>
@@ -116,9 +116,9 @@
     {% for e in exam_same_day %}
     <tr>
       <td class="primary-cell"><strong>{{ e.exam_date|thdate }}</strong></td>
-      <td class="code"><a href="{{ url_for('course_detail', code=e.course_1) }}">{{ e.course_1 }}</a></td>
+      <td class="code nowrap"><a href="{{ url_for('course_detail', code=e.course_1) }}">{{ e.course_1 }}</a></td>
       <td class="nowrap">{{ e.time_1 }}</td>
-      <td class="code"><a href="{{ url_for('course_detail', code=e.course_2) }}">{{ e.course_2 }}</a></td>
+      <td class="code nowrap"><a href="{{ url_for('course_detail', code=e.course_2) }}">{{ e.course_2 }}</a></td>
       <td class="nowrap">{{ e.time_2 }}</td>
       <td data-label="นักศึกษา">{{ ui.tag('warn', e.students ~ ' คน') }}</td>
     </tr>

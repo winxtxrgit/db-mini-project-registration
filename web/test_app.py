@@ -257,6 +257,34 @@ class SchedulerTests(Base):
                       room_code="R-SMALL")
         self.assertIn(("error", "ไม่สำเร็จ: ห้องสอบจุไม่พอสำหรับจำนวนนักศึกษาที่ลงทะเบียน"), flashes(r))
 
+    def test_overview_page_and_rbac(self):
+        r = self.c.get("/schedule/overview")
+        self.assertEqual(r.status_code, 200)
+        body = r.get_data(as_text=True)
+        self.assertIn("310-2205", body)
+        self.assertIn("310-3419", body)
+        self.assertIn("310-2311", body)
+        self.assertIn("910-1116", body)
+
+        r_year = self.c.get("/schedule/overview?curriculum=CPE63&year=3")
+        self.assertEqual(r_year.status_code, 200)
+        self.assertIn("310-3419", r_year.get_data(as_text=True))
+
+        self.login("6799000001")
+        r_forbidden = self.c.get("/schedule/overview")
+        self.assertEqual(r_forbidden.status_code, 403)
+
+    def test_free_rooms_search_r15_and_exam_rooms_r13(self):
+        r = self.c.get("/schedule/rooms?day=3&start=09:00&end=12:00&min_cap=0")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("ค้นหาห้องเรียนว่าง", r.get_data(as_text=True))
+
+        r_home = self.c.get("/schedule/")
+        self.assertEqual(r_home.status_code, 200)
+        home_text = r_home.get_data(as_text=True)
+        self.assertIn("R13", home_text)
+        self.assertIn("R16", home_text)
+
 
 class UITests(Base):
     """โครงหน้าเว็บที่ออกแบบใหม่: การเข้าถึง และการกลับมาที่แถว/กลุ่มเดิมหลังทำรายการ"""

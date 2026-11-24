@@ -2,7 +2,40 @@
 {% import "_ui.html" as ui %}
 {% block title %}ห้อง{% endblock %}
 {% block content %}
-{{ ui.page_header('ห้องเรียนและการใช้ห้อง', 'ภาคเรียนปัจจุบัน · ความจุห้องใช้ตรวจห้องสอบ (ไม่ทราบความจุ = ระบบจะไม่ตรวจ)', codes=('R8',)) }}
+{{ ui.page_header('ห้องเรียนและการใช้ห้อง', 'ภาคเรียนปัจจุบัน · ความจุห้องใช้ตรวจห้องสอบ (ไม่ทราบความจุ = ระบบจะไม่ตรวจ)', codes=('R8', 'R15')) }}
+
+<section class="card" aria-labelledby="r15-h">
+  {{ ui.card_head('ค้นหาห้องเรียนว่าง', ('R15',), 'ใช้ตรวจสอบห้องว่างตามวัน เวลา และจำนวนคนตอนย้ายคาบ', 'search', id='r15-h') }}
+  <form method="get" class="form-row" action="{{ url_for('scheduler.rooms') }}">
+    {% if selected %}<input type="hidden" name="room" value="{{ selected }}">{% endif %}
+    <div class="field"><label for="fd">วัน</label>
+      <select id="fd" name="day">
+        {% for d, name in DAYS.items() %}<option value="{{ d }}" {{ 'selected' if d == free_day }}>{{ name }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="fs">เริ่ม</label><input id="fs" class="time" type="time" name="start" value="{{ free_start or '09:00' }}" required></div>
+    <div class="field"><label for="fe">จบ</label><input id="fe" class="time" type="time" name="end" value="{{ free_end or '12:00' }}" required></div>
+    <div class="field"><label for="mc">ความจุขั้นต่ำ (คน)</label><input id="mc" class="short" type="number" min="0" name="min_cap" value="{{ min_cap or 0 }}"></div>
+    <button class="btn primary">ค้นหาห้องว่าง</button>
+  </form>
+  {% if free_rooms is not none %}
+    {% if free_rooms %}
+    <div class="table-scroll" style="margin-top: var(--s3)"><table class="stack">
+      <thead><tr><th scope="col">ห้องว่าง</th><th scope="col">ความจุ</th><th scope="col" class="actions"><span class="sr-only">ดูตาราง</span></th></tr></thead>
+      <tbody>
+      {% for r in free_rooms %}
+      <tr>
+        <td class="primary-cell"><strong>{{ r.room_code }}</strong></td>
+        <td data-label="ความจุ">{{ r.capacity_label }}</td>
+        <td class="actions"><a class="btn sm" href="{{ url_for('scheduler.rooms', room=r.room_code) }}">ดูตาราง</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    {{ ui.empty('ไม่พบห้องเรียนที่ว่างในช่วงเวลาดังกล่าว') }}
+    {% endif %}
+  {% endif %}
+</section>
 
 <section class="card" aria-labelledby="tt-h">
   {% call ui.card_head('ตารางการใช้ห้อง ' ~ (selected or ''), (), None, 'grid', id='tt-h') %}

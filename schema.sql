@@ -364,6 +364,79 @@ FROM section_instructor si
 JOIN section s        ON s.section_id = si.section_id
 JOIN class_meeting cm ON cm.section_id = si.section_id;
 
+-- section ของแต่ละวิชาอยู่ในแผนของหลักสูตรใด ชั้นปีใด (วิชานอกแผนได้ค่า NULL)
+CREATE VIEW v_section_plan AS
+SELECT s.section_id, s.course_code, s.term_id, sp.curriculum_id, sp.year_level,
+       sp.semester AS plan_semester, sp.is_required
+FROM section s
+LEFT JOIN study_plan sp ON sp.course_code = s.course_code;
+
+-- ภาพรวมตารางเรียนของภาคปัจจุบัน หนึ่งแถวต่อคาบต่อ (หลักสูตร, ชั้นปี) ใช้ทำตารางข้ามชั้นปี
+CREATE VIEW v_schedule_overview AS
+SELECT cm.day_of_week, cm.start_time, cm.end_time,
+       s.section_id, s.course_code, c.name_th AS course_name, s.section_no,
+       cm.room_code,
+       (SELECT group_concat(i.full_name, ', ')
+          FROM section_instructor si JOIN instructor i ON i.instructor_id = si.instructor_id
+         WHERE si.section_id = s.section_id)                                       AS instructor_name,
+       pl.curriculum_id, pl.year_level, pl.plan_semester, pl.is_required,
+       (SELECT COUNT(*) FROM enrollment e WHERE e.section_id = s.section_id)       AS enrolled_count,
+       s.capacity
+FROM class_meeting cm
+JOIN section s         ON s.section_id = cm.section_id
+JOIN course c          ON c.course_code = s.course_code
+JOIN term t            ON t.term_id = s.term_id AND t.is_current = 1
+LEFT JOIN v_section_plan pl ON pl.section_id = s.section_id;
+
+-- วิชาบังคับของชั้นปีเดียวกัน ภาคเดียวกัน ที่เวลาเรียนทับกัน (นักศึกษาเรียนตามแผนไม่ได้)
+CREATE VIEW v_cohort_conflict AS
+SELECT a.curriculum_id, a.year_level, a.day_of_week,
+       a.course_code AS course_a, a.start_time || '-' || a.end_time AS time_a,
+       b.course_code AS course_b, b.start_time || '-' || b.end_time AS time_b
+FROM v_schedule_overview a
+JOIN v_schedule_overview b
+  ON b.curriculum_id = a.curriculum_id AND b.year_level = a.year_level
+ AND b.plan_semester = a.plan_semester AND b.day_of_week = a.day_of_week
+ AND a.course_code < b.course_code
+ AND a.start_time < b.end_time AND b.start_time < a.end_time
+JOIN term t ON t.is_current = 1 AND t.semester = a.plan_semester
+WHERE a.is_required = 1 AND b.is_required = 1;
+
+-- วิชาของชั้นปีต่ำกว่า (ที่รุ่นพี่อาจต้องลงเรียนซ้ำ) ซึ่งเวลาทับกับวิชาบังคับตามแผนของรุ่นพี่
+-- affected_students = นักศึกษาชั้นปีของรุ่นพี่ที่ยังไม่ผ่านวิชานั้น
+CREATE VIEW v_retake_conflict AS
+SELECT lo.curriculum_id, lo.day_of_week,
+       lo.course_code AS retake_course, lo.year_level AS retake_year,
+       lo.start_time || '-' || lo.end_time AS retake_time,
+       hi.course_code AS required_course, hi.year_level AS senior_year,
+       hi.start_time || '-' || hi.end_time AS required_time,
+       (SELECT COUNT(*) FROM v_student_level lv
+         WHERE lv.curriculum_id = lo.curriculum_id AND lv.year_level = hi.year_level
+           AND NOT EXISTS (SELECT 1 FROM v_passed p
+                            WHERE p.student_id = lv.student_id AND p.course_code = lo.course_code)) AS affected_students
+FROM v_schedule_overview lo
+JOIN v_schedule_overview hi
+  ON hi.curriculum_id = lo.curriculum_id AND hi.year_level > lo.year_level
+ AND hi.day_of_week = lo.day_of_week
+ AND lo.start_time < hi.end_time AND hi.start_time < lo.end_time
+JOIN term t ON t.is_current = 1 AND t.semester = hi.plan_semester
+WHERE hi.is_required = 1;
+
+-- นักศึกษาที่สอบมากกว่า 1 วิชาในวันเดียวกัน: CLASH = เวลาทับกัน (ห้ามเกิด), SAME_DAY = วันเดียวกันแต่ไม่ทับ (เตือน)
+CREATE VIEW v_student_exam_clash AS
+SELECT e1.student_id, x1.exam_date,
+       s1.course_code AS course_1, x1.start_time || '-' || x1.end_time AS time_1,
+       s2.course_code AS course_2, x2.start_time || '-' || x2.end_time AS time_2,
+       CASE WHEN x1.start_time < x2.end_time AND x2.start_time < x1.end_time
+            THEN 'CLASH' ELSE 'SAME_DAY' END AS severity
+FROM enrollment e1
+JOIN enrollment e2 ON e2.student_id = e1.student_id AND e1.section_id < e2.section_id
+JOIN section s1    ON s1.section_id = e1.section_id
+JOIN section s2    ON s2.section_id = e2.section_id AND s2.term_id = s1.term_id
+JOIN term t        ON t.term_id = s1.term_id AND t.is_current = 1
+JOIN exam x1       ON x1.section_id = e1.section_id
+JOIN exam x2       ON x2.section_id = e2.section_id AND x2.exam_date = x1.exam_date;
+
 ------------------------------------------------------------------
 -- 7) TRIGGER: กฎการลงทะเบียน (ตรวจตามลำดับ ข้อแรกที่ผิดจะหยุดทันที)
 ------------------------------------------------------------------

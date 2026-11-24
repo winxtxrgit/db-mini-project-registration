@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}ภาพรวมและวิชาชน{% endblock %}
+{% block content %}
+{{ ui.page_header('ภาพรวมตารางเรียนและปัญหาการชน', 'ภาคเรียนปัจจุบัน · ตารางข้ามชั้นปี วิชาเรียนซ้ำชนวิชาบังคับ และวันสอบหลายวิชา', codes=('R12', 'R14', 'R16')) }}
+
+<section class="card" aria-labelledby="r12-h">
+  {% call ui.card_head('ตารางเรียนข้ามชั้นปี (' ~ selected_curr ~ ')', ('R12',), 'เปรียบเทียบเวลาเรียนแต่ละชั้นปี หรือเลือกดูเฉพาะชั้นปี', 'grid', id='r12-h') %}
+    <form class="form-row" method="get" action="{{ url_for('scheduler.overview') }}" aria-label="เลือกหลักสูตรและชั้นปี">
+      <div class="field"><label for="curr">หลักสูตร</label>
+        <select id="curr" name="curriculum" onchange="this.form.requestSubmit()">
+          {% for c in curricula %}<option value="{{ c.curriculum_id }}" {{ 'selected' if c.curriculum_id == selected_curr }}>{{ c.curriculum_id }} · {{ c.program_name }}</option>{% endfor %}
+        </select></div>
+      <div class="field"><label for="yr">ชั้นปี</label>
+        <select id="yr" name="year" onchange="this.form.requestSubmit()">
+          <option value="" {{ 'selected' if not year_level }}>ทุกชั้นปี (1–4)</option>
+          {% for y in (1, 2, 3, 4) %}<option value="{{ y }}" {{ 'selected' if year_level == y }}>ปี {{ y }}</option>{% endfor %}
+        </select></div>
+      <noscript><button class="btn">แสดง</button></noscript>
+    </form>
+  {% endcall %}
+
+  {% if year_level %}
+    {% if filtered %}
+    <div class="table-scroll"><table class="stack">
+      <thead><tr><th scope="col">วัน</th><th scope="col">เวลา</th><th scope="col">รหัสวิชา</th><th scope="col">ชื่อวิชา</th><th scope="col">กลุ่ม</th><th scope="col">ห้อง</th><th scope="col">อาจารย์</th><th scope="col">ลง/รับ</th></tr></thead>
+      <tbody>
+      {% for r in filtered %}
+      <tr>
+        <td class="primary-cell"><strong>{{ r.day }}</strong></td>
+        <td class="nowrap">{{ r.time }}</td>
+        <td class="code"><a href="{{ url_for('course_detail', code=r.course_code) }}">{{ r.course_code }}</a></td>
+        <td data-label="ชื่อวิชา">{{ r.course_name }}</td>
+        <td data-label="กลุ่ม">{{ r.section_no }}</td>
+        <td data-label="ห้อง">{{ r.room_code }}</td>
+        <td data-label="อาจารย์">{{ r.instructor_name }}</td>
+        <td data-label="ลง/รับ">{{ ui.meter(r.enrolled_count, r.capacity, 'คน') }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    {{ ui.empty('ไม่มีรายวิชาตามแผนสำหรับชั้นปี ' ~ year_level) }}
+    {% endif %}
+  {% else %}
+    {% if grid %}
+    <div class="table-scroll"><table class="stack">
+      <thead><tr><th scope="col">วัน</th><th scope="col">เวลา</th><th scope="col">ปี 1</th><th scope="col">ปี 2</th><th scope="col">ปี 3</th><th scope="col">ปี 4</th><th scope="col">นอกแผน</th></tr></thead>
+      <tbody>
+      {% for r in grid %}
+      <tr>
+        <td class="primary-cell"><strong>{{ r.day }}</strong></td>
+        <td class="nowrap">{{ r.time }}</td>
+        <td data-label="ปี 1">{{ r.year_1 or '–' }}</td>
+        <td data-label="ปี 2">{{ r.year_2 or '–' }}</td>
+        <td data-label="ปี 3">{{ r.year_3 or '–' }}</td>
+        <td data-label="ปี 4">{{ r.year_4 or '–' }}</td>
+        <td data-label="นอกแผน">{{ r.not_in_plan or '–' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    {{ ui.empty('ยังไม่มีข้อมูลตารางเรียนสำหรับหลักสูตรนี้') }}
+    {% endif %}
+  {% endif %}
+</section>
+
+<section class="card flush" aria-labelledby="r14-h">
+  {{ ui.card_head('วิชาชนข้ามชั้นปี (' ~ selected_curr ~ ')', ('R14',), 'วิชาเรียนซ้ำของชั้นปีต่ำกว่าที่เวลาทับกับวิชาบังคับของรุ่นพี่ และวิชาบังคับชั้นปีเดียวกันที่ชนกันเอง', 'alert', id='r14-h') }}
+  {% if retake_conflicts %}
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">วัน</th><th scope="col">วิชาชั้นปีต่ำกว่า (เรียนซ้ำ)</th><th scope="col">เวลา</th><th scope="col">วิชาบังคับรุ่นพี่</th><th scope="col">เวลา</th><th scope="col">รุ่นพี่ที่ยังไม่ผ่าน</th></tr></thead>
+    <tbody>
+    {% for r in retake_conflicts %}
+    <tr>
+      <td class="primary-cell"><strong>{{ r.day }}</strong></td>
+      <td data-label="วิชาชั้นปีต่ำกว่า"><a class="code" href="{{ url_for('course_detail', code=r.retake_course) }}">{{ r.retake_course }}</a> (ปี {{ r.retake_year }})</td>
+      <td data-label="เวลา" class="nowrap">{{ r.retake_time }}</td>
+      <td data-label="วิชาบังคับรุ่นพี่"><a class="code" href="{{ url_for('course_detail', code=r.required_course) }}">{{ r.required_course }}</a> (ปี {{ r.senior_year }})</td>
+      <td data-label="เวลา" class="nowrap">{{ r.required_time }}</td>
+      <td data-label="รุ่นพี่ที่ยังไม่ผ่าน">{{ ui.tag('warn' if r.affected_students > 0 else 'muted', r.affected_students ~ ' คน') }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  {{ ui.empty('ไม่พบวิชาเรียนซ้ำที่ชนกับวิชาบังคับของรุ่นพี่', 'check') }}
+  {% endif %}
+
+  {% if cohort_conflicts %}
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">ชั้นปี</th><th scope="col">วัน</th><th scope="col">วิชา A</th><th scope="col">เวลา</th><th scope="col">วิชา B</th><th scope="col">เวลา</th></tr></thead>
+    <tbody>
+    {% for c in cohort_conflicts %}
+    <tr>
+      <td class="primary-cell">ปี {{ c.year_level }}</td>
+      <td>{{ c.day }}</td>
+      <td class="code">{{ c.course_a }}</td>
+      <td class="nowrap">{{ c.time_a }}</td>
+      <td class="code">{{ c.course_b }}</td>
+      <td class="nowrap">{{ c.time_b }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+
+<section class="card flush" aria-labelledby="r16-h">
+  {{ ui.card_head('วันที่นักศึกษาสอบหลายวิชา', ('R16',), 'ตารางสอบวันเดียวกันแต่ไม่ทับเวลา (ช่วยเตือนนักศึกษาก่อนสอบ)', 'calendar', id='r16-h') }}
+  {% if exam_same_day %}
+  <div class="table-scroll"><table class="stack">
+    <thead><tr><th scope="col">วันสอบ</th><th scope="col">วิชาที่ 1</th><th scope="col">เวลา</th><th scope="col">วิชาที่ 2</th><th scope="col">เวลา</th><th scope="col">นักศึกษาที่ได้รับผล</th></tr></thead>
+    <tbody>
+    {% for e in exam_same_day %}
+    <tr>
+      <td class="primary-cell"><strong>{{ e.exam_date|thdate }}</strong></td>
+      <td class="code"><a href="{{ url_for('course_detail', code=e.course_1) }}">{{ e.course_1 }}</a></td>
+      <td class="nowrap">{{ e.time_1 }}</td>
+      <td class="code"><a href="{{ url_for('course_detail', code=e.course_2) }}">{{ e.course_2 }}</a></td>
+      <td class="nowrap">{{ e.time_2 }}</td>
+      <td data-label="นักศึกษา">{{ ui.tag('warn', e.students ~ ' คน') }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  {{ ui.empty('ไม่มีนักศึกษาที่สอบหลายวิชาในวันเดียวกัน', 'check') }}
+  {% endif %}
+</section>
+{% endblock %}

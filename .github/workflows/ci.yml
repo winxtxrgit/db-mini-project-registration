@@ -31,9 +31,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r web/requirements.txt
 
-      - name: Verify SQLite Run Script
+      # ไม่รัน run.sql ทั้งชุด เพราะ demo.sql ตั้งใจให้ขึ้น error 14 ครั้ง (sqlite3 จะจบด้วย exit 1 เสมอ)
+      # กฎใน demo.sql ตรวจแล้วใน tests/test_triggers.py
+      - name: Verify schema, seed and reports
         run: |
-          sqlite3 < run.sql > /dev/null
+          sqlite3 :memory: ".read schema.sql" ".read seed.sql" ".read queries.sql" > /dev/null
 
       - name: Test SQL Triggers & Business Rules (D1-D19)
         run: |

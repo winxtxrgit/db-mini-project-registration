@@ -3,30 +3,45 @@
    สีทั้งหมดอ้างผ่านตัวแปร (ห้ามใส่ hex ตรงใน component) เพื่อให้สลับ light/dark ได้ */
 
 /* ============================================================ tokens */
+/* สีทุกตัวเขียนครั้งเดียวเป็นคู่ light-dark(สว่าง, มืด) เบราว์เซอร์เลือกค่าตาม color-scheme
+   - ไม่ตั้งธีม  → color-scheme: light dark = ตามการตั้งค่าเครื่อง
+   - data-theme  → บังคับสว่างหรือมืด (ปุ่มสลับธีมใน app.js)
+   แก้สีที่นี่ที่เดียว ทั้งธีม "ตามเครื่อง" และธีมที่เลือกเองจะได้ค่าเดียวกันเสมอ */
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 :root {
-  color-scheme: light;
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-2: #f9fafb;
-  --surface-3: #f1f3f6;
-  --ink: #111827;
-  --muted: #4b5563;
-  --line: #e5e7eb;
-  --line-strong: #8a94a3;      /* เส้นขอบช่องกรอก ต้องได้ ≥3:1 กับพื้น */
-  --primary: #00589a;          /* น้ำเงินตามตราสถาบันเทคโนโลยีจิตรลดา */
-  --primary-hover: #00467b;
-  --on-primary: #ffffff;
-  --primary-soft: #e8f1f9;
-  --focus: #2563eb;
-  --ok: #166534;   --ok-bg: #dcfce7;   --ok-line: #86efac;
-  --bad: #991b1b;  --bad-bg: #fee2e2;  --bad-line: #fca5a5;
-  --warn: #854d0e; --warn-bg: #fef9c3; --warn-line: #fde047;
-  --info: #00589a; --info-bg: #dbeafe; --info-line: #93c5fd;
-  --neutral: #374151; --neutral-bg: #eef0f3;
-  --target: #fff7d6;
-  --shadow: 0 1px 2px rgb(16 24 40 / 6%);
-  --shadow-pop: 0 8px 24px rgb(16 24 40 / 14%);
+  /* พื้นผิวและตัวอักษร */
+  --bg:          light-dark(#f6f7f9, #0b1220);
+  --surface:     light-dark(#ffffff, #111827);
+  --surface-2:   light-dark(#f9fafb, #162032);
+  --surface-3:   light-dark(#f1f3f6, #1f2937);
+  --ink:         light-dark(#111827, #f3f4f6);
+  --muted:       light-dark(#4b5563, #a3acb9);
+  --line:        light-dark(#e5e7eb, #2b3646);
+  --line-strong: light-dark(#8a94a3, #6b7686);   /* เส้นขอบช่องกรอก ต้องได้ ≥3:1 กับพื้น */
 
+  /* สีหลัก: น้ำเงินตามตราสถาบันเทคโนโลยีจิตรลดา */
+  --primary:        light-dark(#00589a, #5aaee8);
+  --primary-hover:  light-dark(#00467b, #8cc8f0);
+  --primary-active: light-dark(#003660, #b5dcf6);
+  --on-primary:     light-dark(#ffffff, #0b1220);
+  --primary-soft:   light-dark(#e8f1f9, #0f2a44);
+  --focus:          light-dark(#2563eb, #93c5fd);
+
+  /* สถานะ: ตัวอักษร / พื้น / เส้น */
+  --ok:   light-dark(#166534, #86efac); --ok-bg:   light-dark(#dcfce7, #052e16); --ok-line:   light-dark(#86efac, #166534);
+  --bad:  light-dark(#991b1b, #fca5a5); --bad-bg:  light-dark(#fee2e2, #450a0a); --bad-line:  light-dark(#fca5a5, #991b1b);
+  --warn: light-dark(#854d0e, #fde68a); --warn-bg: light-dark(#fef9c3, #422006); --warn-line: light-dark(#fde047, #854d0e);
+  --info: light-dark(#00589a, #93c5fd); --info-bg: light-dark(#dbeafe, #172554); --info-line: light-dark(#93c5fd, #1e40af);
+  --neutral: light-dark(#374151, #d1d5db); --neutral-bg: light-dark(#eef0f3, #263041);
+  --target:  light-dark(#fff7d6, #3a3210);
+  --logo-bg: #ffffff;                                /* ตราสถาบันต้องอยู่บนพื้นขาวทั้งสองธีม */
+
+  --shadow:     0 1px 2px light-dark(rgb(16 24 40 / 6%), rgb(0 0 0 / 40%));
+  --shadow-pop: 0 8px 24px light-dark(rgb(16 24 40 / 14%), rgb(0 0 0 / 50%));
+
+  /* ตัวอักษร ระยะ รูปทรง */
   --font: "IBM Plex Sans Thai", system-ui, -apple-system, "Segoe UI", sans-serif;
   --fs-xs: 13px; --fs-sm: 14px; --fs-md: 16px; --fs-lg: 18px; --fs-xl: 20px; --fs-2xl: 24px; --fs-3xl: 30px;
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
@@ -35,41 +50,15 @@
   --control-sm: 32px;
   --side-w: 240px;
   --top-h: 56px;
+
+  /* ลำดับชั้น (มากทับน้อย) */
+  --z-skip: 100;      /* ลิงก์ข้ามไปเนื้อหา อยู่บนสุด */
+  --z-topbar: 40;
+  --z-flash: 30;
+  --z-subnav: 20;
+
   --ease: cubic-bezier(.2, .6, .2, 1);
   --t-fast: 150ms;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --bg: #0b1220; --surface: #111827; --surface-2: #162032; --surface-3: #1f2937;
-    --ink: #f3f4f6; --muted: #a3acb9; --line: #2b3646; --line-strong: #6b7686;
-    --primary: #5aaee8; --primary-hover: #8cc8f0; --on-primary: #0b1220; --primary-soft: #0f2a44;
-    --focus: #93c5fd;
-    --ok: #86efac; --ok-bg: #052e16; --ok-line: #166534;
-    --bad: #fca5a5; --bad-bg: #450a0a; --bad-line: #991b1b;
-    --warn: #fde68a; --warn-bg: #422006; --warn-line: #854d0e;
-    --info: #93c5fd; --info-bg: #172554; --info-line: #1e40af;
-    --neutral: #d1d5db; --neutral-bg: #263041;
-    --target: #3a3210;
-    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
-    --shadow-pop: 0 8px 24px rgb(0 0 0 / 50%);
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #0b1220; --surface: #111827; --surface-2: #162032; --surface-3: #1f2937;
-  --ink: #f3f4f6; --muted: #a3acb9; --line: #2b3646; --line-strong: #6b7686;
-  --primary: #5aaee8; --primary-hover: #8cc8f0; --on-primary: #0b1220; --primary-soft: #0f2a44;
-  --focus: #93c5fd;
-  --ok: #86efac; --ok-bg: #052e16; --ok-line: #166534;
-  --bad: #fca5a5; --bad-bg: #450a0a; --bad-line: #991b1b;
-  --warn: #fde68a; --warn-bg: #422006; --warn-line: #854d0e;
-  --info: #93c5fd; --info-bg: #172554; --info-line: #1e40af;
-  --neutral: #d1d5db; --neutral-bg: #263041;
-  --target: #3a3210;
-  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
-  --shadow-pop: 0 8px 24px rgb(0 0 0 / 50%);
 }
 
 /* ============================================================ base */
@@ -94,7 +83,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 ::selection { background: var(--info-bg); color: var(--ink); }
 
 .skip {
-  position: absolute; left: var(--s3); top: -100px; z-index: 100;
+  position: absolute; left: var(--s3); top: -100px; z-index: var(--z-skip);
   background: var(--primary); color: var(--on-primary); padding: var(--s2) var(--s4);
   border-radius: var(--r-sm); font-weight: 600; text-decoration: none;
 }
@@ -108,7 +97,7 @@ main:focus { outline: none; }
 
 /* ============================================================ layout */
 .topbar {
-  position: sticky; top: 0; z-index: 40; height: var(--top-h);
+  position: sticky; top: 0; z-index: var(--z-topbar); height: var(--top-h);
   background: var(--surface); border-bottom: 1px solid var(--line);
   display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4);
 }
@@ -119,9 +108,7 @@ main:focus { outline: none; }
               display: grid; place-items: center; flex: none; }
 /* ตราสถาบัน: ใช้ไฟล์ต้นฉบับ ไม่ปรับสีหรือตัดส่วนใด · โหมดมืดวางบนพื้นขาวเพื่อให้ตรายังเห็นชัด */
 .logo { display: block; height: 40px; width: auto; flex: none; }
-.logo-wrap { display: grid; place-items: center; flex: none; border-radius: 8px; }
-:root[data-theme="dark"] .logo-wrap { background: #fff; padding: 2px 4px; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo-wrap { background: #fff; padding: 2px 4px; } }
+.logo-wrap { display: grid; place-items: center; flex: none; border-radius: 8px; background: var(--logo-bg); padding: 2px 4px; }
 .auth-logo { display: flex; justify-content: center; margin-bottom: var(--s4); }
 .auth-logo .logo { height: 112px; }
 .auth-logo .logo-wrap { padding: 8px 12px; border-radius: 14px; }
@@ -156,6 +143,7 @@ main:focus { outline: none; }
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .icon-btn:hover { background: var(--surface-3); color: var(--ink); }
+.icon-btn:active { background: var(--line); }
 
 .shell { display: grid; grid-template-columns: minmax(0, 1fr); min-height: calc(100vh - var(--top-h)); }
 .shell.has-side { grid-template-columns: var(--side-w) minmax(0, 1fr); }
@@ -237,7 +225,7 @@ main:focus { outline: none; }
 .tag.warn { background: var(--warn-bg); color: var(--warn); }
 .tag.info { background: var(--info-bg); color: var(--info); }
 .tag.muted { background: var(--neutral-bg); color: var(--neutral); }
-.rcode { font-size: 11px; font-weight: 600; letter-spacing: .03em; padding: 0 6px; border-radius: 4px;
+.rcode { font-size: var(--fs-xs); font-weight: 600; letter-spacing: .03em; padding: 0 6px; border-radius: 4px;
          border: 1px solid var(--line-strong); color: var(--muted); line-height: 18px; vertical-align: middle; }
 
 /* ---------- ปุ่ม */
@@ -256,6 +244,12 @@ main:focus { outline: none; }
 .btn.danger.solid { background: var(--bad); border-color: var(--bad); color: var(--surface); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--primary); }
 .btn.ghost:hover { background: var(--primary-soft); }
+/* ตอนกด: สีเข้มขึ้นอีกขั้น + ยุบลง 1px ให้รู้ว่ากดโดน (สำคัญบนจอสัมผัสที่ไม่มี hover) */
+.btn:not([disabled], [aria-disabled="true"]):active { transform: translateY(1px); background: var(--line); }
+.btn.primary:not([disabled]):active { background: var(--primary-active); border-color: var(--primary-active); }
+.btn.danger:not(.solid, [disabled]):active { background: var(--bad-line); }
+.btn.danger.solid:not([disabled]):active { background: var(--bad); }
+.btn.ghost:not([disabled]):active { background: var(--info-bg); }
 .btn.sm { min-height: var(--control-sm); padding: 0 var(--s3); }
 .btn.icon-only { width: var(--control-sm); padding: 0; }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
@@ -364,7 +358,7 @@ a.stat:hover { border-color: var(--line-strong); color: var(--ink); }
 .meter.lg .meter-bar { height: 10px; }
 
 /* ---------- ข้อความแจ้ง (flash) · markup ต้องเป็น <div class="flash X">ข้อความ ... ตามที่ชุดทดสอบอ่าน */
-.flashes { position: sticky; top: calc(var(--top-h) + var(--s2)); z-index: 30; display: flex; flex-direction: column;
+.flashes { position: sticky; top: calc(var(--top-h) + var(--s2)); z-index: var(--z-flash); display: flex; flex-direction: column;
            gap: var(--s2); margin-bottom: var(--s4); }
 .flash { display: flex; align-items: flex-start; gap: var(--s3); padding: var(--s3) var(--s3) var(--s3) var(--s4);
          border-radius: var(--r-md); border: 1px solid; font-size: var(--fs-sm); font-weight: 500;
@@ -396,21 +390,23 @@ a.stat:hover { border-color: var(--line-strong); color: var(--ink); }
 .chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: var(--control-sm); padding: 0 var(--s3);
         border-radius: var(--r-pill); border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink);
-        font-size: var(--fs-sm); cursor: pointer; transition: all var(--t-fast) var(--ease); }
+        font-size: var(--fs-sm); cursor: pointer;
+        transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .chip:hover { background: var(--surface-3); }
+.chip:active { background: var(--line); }
 .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 .chip .count { font-size: var(--fs-xs); opacity: .8; font-variant-numeric: tabular-nums; }
 .no-js .js-only { display: none !important; }
 .filter-empty { padding: var(--s5); text-align: center; }
 
 /* ---------- เมนูในหน้า */
-.subnav { position: sticky; top: var(--top-h); z-index: 20; display: flex; gap: var(--s1); overflow-x: auto;
+.subnav { position: sticky; top: var(--top-h); z-index: var(--z-subnav); display: flex; gap: var(--s1); overflow-x: auto;
           background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px);
           margin: 0 calc(var(--s5) * -1) var(--s5); padding: var(--s2) var(--s5); border-bottom: 1px solid var(--line); }
 .subnav a { display: inline-flex; align-items: center; gap: 6px; padding: 0 var(--s3); min-height: 36px; white-space: nowrap;
             border-radius: var(--r-pill); color: var(--muted); text-decoration: none; font-size: var(--fs-sm); font-weight: 500; }
 .subnav a:hover { background: var(--surface-3); color: var(--ink); }
-.subnav .count { background: var(--bad-bg); color: var(--bad); border-radius: var(--r-pill); padding: 0 7px; font-size: 12px;
+.subnav .count { background: var(--bad-bg); color: var(--bad); border-radius: var(--r-pill); padding: 0 7px; font-size: var(--fs-xs);
                  font-variant-numeric: tabular-nums; }
 @media (max-width: 1023px) { .subnav { margin: 0 calc(var(--s4) * -1) var(--s4); padding: var(--s2) var(--s4); } }
 @media (max-width: 720px) { .subnav { margin: 0 calc(var(--s3) * -1) var(--s4); padding: var(--s2) var(--s3); } }

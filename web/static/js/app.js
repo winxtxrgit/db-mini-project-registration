@@ -10,6 +10,11 @@
   function applyTheme(t) {
     if (t === "auto") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.setAttribute("data-theme", t);
+    /* สีแถบเบราว์เซอร์: ธีมอัตโนมัติใช้ตาม media ของแต่ละ meta, ธีมที่เลือกเองใช้สีเดียวกันทั้งสอง */
+    document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+      var own = m.getAttribute("media").indexOf("dark") !== -1 ? "dark" : "light";
+      m.setAttribute("content", m.getAttribute("data-" + (t === "auto" ? own : t)));
+    });
     document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
       btn.setAttribute("aria-label", THEME_LABEL[t] + " (กดเพื่อเปลี่ยน)");
       btn.setAttribute("title", THEME_LABEL[t]);

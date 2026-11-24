@@ -41,7 +41,9 @@
 <title>{% block title %}หน้าหลัก{% endblock %} · ระบบลงทะเบียนตามแผนการเรียน</title>
 <script>/* ตั้งธีมก่อนวาดหน้า กันจอกะพริบ */try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/cdti-logo.png') }}">
-<meta name="theme-color" content="#00589a">
+{#- สีแถบเบราว์เซอร์บนมือถือ: สว่าง = น้ำเงินตามตรา, มืด = สีแถบบนของธีมมืด (app.js ปรับตามปุ่มสลับธีม) -#}
+<meta name="theme-color" content="#00589a" media="(prefers-color-scheme: light)" data-light="#00589a" data-dark="#111827">
+<meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" data-light="#00589a" data-dark="#111827">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">

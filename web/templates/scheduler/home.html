@@ -21,6 +21,32 @@
 {{ ui.page_header('ตารางเรียนและตารางสอบ', 'ภาคเรียน ' ~ term.term_id ~ ' · ทุกการแก้ไขถูกตรวจโดย trigger: ห้องซ้ำ (ยกเว้นกลุ่มของวิชาเดียวกันเรียนรวม), อาจารย์สอนสองที่, นักศึกษาที่ลงแล้วเรียน/สอบชน, ห้องสอบจุไม่พอ') }}
 {% if not can_edit %}<div class="banner">{{ ui.icon('eye') }}<span>ฝ่ายทะเบียน<strong>ดูได้อย่างเดียว</strong> · การแก้ไขทำโดยผู้จัดตาราง</span></div>{% endif %}
 
+{% if exam_same_day %}
+<details class="disclosure" style="margin-bottom: var(--s4)">
+  <summary>
+    <span class="title">{{ ui.icon('calendar', 'i-sm') }} วันที่นักศึกษาสอบหลายวิชา {{ ui.rcode('R16') }} · พบ {{ exam_same_day|length }} คู่วิชา</span>
+    {{ ui.icon('chevron', 'chev') }}
+  </summary>
+  <div class="body">
+    <div class="table-scroll"><table class="stack">
+      <thead><tr><th scope="col">วันสอบ</th><th scope="col">วิชาที่ 1</th><th scope="col">เวลา</th><th scope="col">วิชาที่ 2</th><th scope="col">เวลา</th><th scope="col">นักศึกษา</th></tr></thead>
+      <tbody>
+      {% for e in exam_same_day %}
+      <tr>
+        <td class="primary-cell"><strong>{{ e.exam_date|thdate }}</strong></td>
+        <td class="code">{{ e.course_1 }}</td>
+        <td class="nowrap">{{ e.time_1 }}</td>
+        <td class="code">{{ e.course_2 }}</td>
+        <td class="nowrap">{{ e.time_2 }}</td>
+        <td>{{ e.students }} คน</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</details>
+{% endif %}
+
 <div data-filter-scope>
   <div class="toolbar">
     {{ ui.filter_search('ค้นหารหัสหรือชื่อวิชา', 'ค้นหากลุ่มเรียน', 'q-sec') }}
@@ -109,7 +135,13 @@
               <div class="field"><label for="xd{{ x.exam_id }}">วันที่</label><input id="xd{{ x.exam_id }}" type="date" name="exam_date" value="{{ x.exam_date }}"></div>
               {{ time_field('xs' ~ x.exam_id, 'start_time', 'เริ่ม', x.start_time) }}
               {{ time_field('xe' ~ x.exam_id, 'end_time', 'จบ', x.end_time) }}
-              <div class="field"><label for="xr{{ x.exam_id }}">ห้องสอบ</label>{{ room_select('xr' ~ x.exam_id, x.room_code) }}</div>
+              <div class="field"><label for="xr{{ x.exam_id }}">ห้องสอบ {{ ui.rcode('R13') }}</label>
+                <select id="xr{{ x.exam_id }}" name="room_code">
+                  <option value="">ไม่ระบุห้อง</option>
+                  {% for r in exam_rooms[x.exam_id] %}
+                    <option value="{{ r.room_code }}" {{ 'selected' if r.room_code == x.room_code }}>{{ r.room_code }} · {{ r.result }}</option>
+                  {% endfor %}
+                </select></div>
               <button class="btn">บันทึก</button>
             </form>
             {{ ui.action_form(url_for('scheduler.exam_delete', exam_id=x.exam_id), 'ลบ', 'btn danger', 'trash', aria='ลบเวลาสอบ ' ~ x.exam_date) }}

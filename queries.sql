@@ -176,3 +176,87 @@ LEFT JOIN v_instructor_busy b ON b.instructor_id = i.instructor_id
      AND b.term_id = (SELECT term_id FROM term WHERE is_current = 1)
 GROUP BY i.instructor_id
 ORDER BY hours_per_week DESC, i.full_name;
+
+.print ''
+.print '=== R12 ภาพรวมตารางเรียนข้ามชั้นปีของหลักสูตร CPE63 (แต่ละช่องคือวิชาที่ชั้นปีนั้นเรียนตามแผน) ==='
+SELECT CASE day_of_week WHEN 1 THEN 'จ.' WHEN 2 THEN 'อ.' WHEN 3 THEN 'พ.' WHEN 4 THEN 'พฤ.' WHEN 5 THEN 'ศ.' WHEN 6 THEN 'ส.' ELSE 'อา.' END AS day,
+       start_time || '-' || end_time AS time,
+       COALESCE(group_concat(CASE WHEN year_level = 1 THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS year_1,
+       COALESCE(group_concat(CASE WHEN year_level = 2 THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS year_2,
+       COALESCE(group_concat(CASE WHEN year_level = 3 THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS year_3,
+       COALESCE(group_concat(CASE WHEN year_level = 4 THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS year_4,
+       COALESCE(group_concat(CASE WHEN year_level IS NULL THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS not_in_plan
+FROM v_schedule_overview
+WHERE curriculum_id = 'CPE63' OR curriculum_id IS NULL
+GROUP BY day_of_week, start_time, end_time
+ORDER BY day_of_week, start_time;
+
+.print ''
+.print '--- R12 (ต่อ) เปิดดูเฉพาะปี 2 กับปี 3 เพื่อจัดวิชาเรียนซ้ำ ---'
+SELECT CASE day_of_week WHEN 1 THEN 'จ.' WHEN 2 THEN 'อ.' WHEN 3 THEN 'พ.' WHEN 4 THEN 'พฤ.' WHEN 5 THEN 'ศ.' WHEN 6 THEN 'ส.' ELSE 'อา.' END AS day,
+       start_time || '-' || end_time AS time, 'ปี ' || year_level AS year,
+       course_code, course_name, section_no AS sec, COALESCE(room_code, '-') AS room_code,
+       COALESCE(instructor_name, '-') AS instructor_name,
+       enrolled_count || '/' || capacity AS enrolled
+FROM v_schedule_overview
+WHERE curriculum_id = 'CPE63' AND year_level IN (2, 3)
+ORDER BY day_of_week, start_time, year_level;
+
+.print ''
+.print '=== R14 วิชาเรียนซ้ำที่ชนกับวิชาบังคับของรุ่นพี่ และวิชาบังคับชั้นปีเดียวกันที่ชนกันเอง ==='
+SELECT curriculum_id,
+       CASE day_of_week WHEN 1 THEN 'จ.' WHEN 2 THEN 'อ.' WHEN 3 THEN 'พ.' WHEN 4 THEN 'พฤ.' WHEN 5 THEN 'ศ.' WHEN 6 THEN 'ส.' ELSE 'อา.' END AS day,
+       retake_course || ' (วิชาปี ' || retake_year || ') ' || retake_time AS lower_year_course,
+       required_course || ' (บังคับปี ' || senior_year || ') ' || required_time AS senior_required_course,
+       affected_students AS seniors_not_passed
+FROM v_retake_conflict
+ORDER BY affected_students DESC, day_of_week;
+
+SELECT 'วิชาบังคับชั้นปีเดียวกันที่เวลาทับกัน' AS check_name, COUNT(*) AS found,
+       CASE WHEN COUNT(*) = 0 THEN 'ไม่พบ' ELSE 'ต้องแก้ตาราง ดู v_cohort_conflict' END AS result
+FROM v_cohort_conflict;
+
+.print ''
+.print '=== R13 ห้องสอบที่ว่างและจุพอสำหรับ 310-2205 (2027-03-01 เวลา 09:00-12:00) เรียงจากห้องที่พอดีที่สุด ==='
+WITH q AS (
+  SELECT s.section_id, '2027-03-01' AS d, '09:00' AS t1, '12:00' AS t2,
+         (SELECT COUNT(*) FROM enrollment e WHERE e.section_id = s.section_id) AS students
+  FROM section s JOIN term t ON t.term_id = s.term_id AND t.is_current = 1
+  WHERE s.course_code = '310-2205'
+)
+SELECT r.room_code, COALESCE(CAST(r.capacity AS TEXT), 'ไม่ทราบความจุ') AS capacity, q.students,
+       CASE
+         WHEN used.course_code IS NOT NULL THEN 'ไม่ว่าง: ใช้สอบ ' || used.course_code
+         WHEN r.capacity IS NULL           THEN 'ไม่ทราบความจุ'
+         WHEN r.capacity < q.students      THEN 'จุไม่พอ'
+         ELSE 'ใช้ได้ (ที่นั่งเหลือ ' || (r.capacity - q.students) || ')'
+       END AS result
+FROM room r
+CROSS JOIN q
+LEFT JOIN (SELECT ex.room_code, group_concat(s.course_code, ', ') AS course_code
+           FROM exam ex JOIN section s ON s.section_id = ex.section_id, q
+           WHERE ex.exam_date = q.d AND ex.start_time < q.t2 AND q.t1 < ex.end_time
+             AND ex.room_code IS NOT NULL AND ex.section_id <> q.section_id
+           GROUP BY ex.room_code) used ON used.room_code = r.room_code
+ORDER BY (used.course_code IS NULL AND r.capacity >= q.students) DESC,
+         (used.course_code IS NULL AND r.capacity IS NULL) DESC,
+         r.capacity IS NULL, r.capacity, r.room_code;
+
+.print ''
+.print '=== R15 ห้องเรียนที่ว่างวันศุกร์ 09:00-12:00 และจุได้อย่างน้อย 47 คน (ใช้ตอนย้ายคาบ) ==='
+SELECT r.room_code, COALESCE(CAST(r.capacity AS TEXT), 'ไม่ทราบความจุ') AS capacity
+FROM room r
+WHERE (r.capacity >= 47 OR r.capacity IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM v_room_usage u
+                  JOIN term t ON t.term_id = u.term_id AND t.is_current = 1
+                  WHERE u.room_code = r.room_code AND u.day_of_week = 5
+                    AND u.start_time < '12:00' AND '09:00' < u.end_time)
+ORDER BY r.capacity IS NULL, r.capacity, r.room_code;
+
+.print ''
+.print '=== R16 วันที่นักศึกษาสอบหลายวิชาในวันเดียวกัน (จำนวนนักศึกษาที่ได้รับผล) ==='
+SELECT exam_date, course_1, time_1, course_2, time_2, COUNT(*) AS students
+FROM v_student_exam_clash
+WHERE severity = 'SAME_DAY'
+GROUP BY exam_date, course_1, time_1, course_2, time_2
+ORDER BY exam_date, course_1, course_2;

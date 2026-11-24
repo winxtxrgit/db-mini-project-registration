@@ -38,19 +38,57 @@ def _section_of(table: str, key: str, value: int):
 @require(*VIEW)
 def home():
     meetings, exams, teachers = defaultdict(list), defaultdict(list), defaultdict(list)
+    exam_rooms = {}
     for m in rows(R.SCHED_MEETINGS):
         meetings[m["section_id"]].append(m)
     for x in rows(R.SCHED_EXAMS):
         exams[x["section_id"]].append(x)
+        exam_rooms[x["exam_id"]] = rows(
+            R.R13_EXAM_ROOMS,
+            section_id=x["section_id"],
+            exam_date=x["exam_date"],
+            start_time=x["start_time"],
+            end_time=x["end_time"],
+        )
     for t in rows(R.SCHED_INSTRUCTORS):
         teachers[t["section_id"]].append(t)
     return render_template(
         "scheduler/home.html",
         sections=rows(R.SCHED_SECTIONS), meetings=meetings, exams=exams, teachers=teachers,
+        exam_rooms=exam_rooms,
+        exam_same_day=rows(R.R16_EXAM_SAME_DAY),
         rooms=rows("SELECT room_code, capacity FROM room ORDER BY room_code"),
         instructors=rows("SELECT instructor_id, full_name FROM instructor ORDER BY full_name"),
         term=one("SELECT term_id FROM term WHERE is_current = 1"),
         open_id=request.args.get("open", type=int),
+    )
+
+
+@bp.route("/overview")
+@require(*VIEW)
+def overview():
+    curricula = rows(
+        "SELECT c.curriculum_id, p.program_name "
+        "FROM curriculum c JOIN program p ON p.program_code = c.program_code "
+        "WHERE EXISTS (SELECT 1 FROM study_plan sp WHERE sp.curriculum_id = c.curriculum_id) "
+        "ORDER BY c.curriculum_id"
+    )
+    selected_curr = request.args.get("curriculum") or (curricula[0]["curriculum_id"] if curricula else "CPE63")
+    year_level = request.args.get("year", type=int)
+    if year_level not in (1, 2, 3, 4):
+        year_level = None
+    grid = rows(R.R12_SCHEDULE_OVERVIEW, curriculum_id=selected_curr)
+    filtered = rows(R.R12_SCHEDULE_OVERVIEW_FILTERED, curriculum_id=selected_curr, year_level=year_level) if year_level else []
+    return render_template(
+        "scheduler/overview.html",
+        curricula=curricula,
+        selected_curr=selected_curr,
+        year_level=year_level,
+        grid=grid,
+        filtered=filtered,
+        retake_conflicts=rows(R.R14_RETAKE_CONFLICT, curriculum_id=selected_curr),
+        cohort_conflicts=rows(R.R14_COHORT_CONFLICT, curriculum_id=selected_curr),
+        exam_same_day=rows(R.R16_EXAM_SAME_DAY),
     )
 
 
@@ -169,7 +207,25 @@ def rooms():
     room_list = rows("SELECT room_code, capacity FROM room ORDER BY room_code")
     selected = request.args.get("room") or next((r["room_code"] for r in room_list if usage[r["room_code"]]), None)
     tt = timetable(rows(R.ROOM_MEETINGS, room=selected), sub_key="teachers") if selected else {"empty": True}
-    return render_template("scheduler/rooms.html", usage=usage, rooms=room_list, selected=selected, tt=tt)
+    free_day = request.args.get("day", type=int)
+    free_start = (request.args.get("start") or "").strip()
+    free_end = (request.args.get("end") or "").strip()
+    min_cap = request.args.get("min_cap", type=int) or 0
+    free_rooms = None
+    if free_day and 1 <= free_day <= 7 and free_start and free_end:
+        free_rooms = rows(
+            R.R15_FREE_ROOMS,
+            day_of_week=free_day,
+            start_time=free_start,
+            end_time=free_end,
+            min_capacity=min_cap,
+        )
+    return render_template(
+        "scheduler/rooms.html",
+        usage=usage, rooms=room_list, selected=selected, tt=tt,
+        free_day=free_day, free_start=free_start, free_end=free_end, min_cap=min_cap,
+        free_rooms=free_rooms,
+    )
 
 
 @bp.post("/rooms")

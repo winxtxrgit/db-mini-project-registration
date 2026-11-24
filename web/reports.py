@@ -360,6 +360,98 @@ ORDER BY l.log_id DESC
 LIMIT 300
 """
 
+R12_SCHEDULE_OVERVIEW = f"""
+SELECT day_of_week, {DAY_NAME.format(col="day_of_week")} AS day,
+       start_time || '-' || end_time AS time,
+       COALESCE(group_concat(CASE WHEN year_level = 1 THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS year_1,
+       COALESCE(group_concat(CASE WHEN year_level = 2 THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS year_2,
+       COALESCE(group_concat(CASE WHEN year_level = 3 THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS year_3,
+       COALESCE(group_concat(CASE WHEN year_level = 4 THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS year_4,
+       COALESCE(group_concat(CASE WHEN year_level IS NULL THEN course_code || ' (' || COALESCE(room_code, '-') || ')' END, ', '), '') AS not_in_plan
+FROM v_schedule_overview
+WHERE curriculum_id = :curriculum_id OR curriculum_id IS NULL
+GROUP BY day_of_week, start_time, end_time
+ORDER BY day_of_week, start_time
+"""
+
+R12_SCHEDULE_OVERVIEW_FILTERED = f"""
+SELECT day_of_week, {DAY_NAME.format(col="day_of_week")} AS day,
+       start_time, end_time, start_time || '-' || end_time AS time,
+       year_level, course_code, course_name, section_no,
+       COALESCE(room_code, '-') AS room_code,
+       COALESCE(instructor_name, '-') AS instructor_name,
+       enrolled_count, capacity, is_required
+FROM v_schedule_overview
+WHERE curriculum_id = :curriculum_id
+  AND (:year_level IS NULL OR year_level = :year_level)
+ORDER BY day_of_week, start_time, year_level, course_code
+"""
+
+R14_RETAKE_CONFLICT = f"""
+SELECT curriculum_id, day_of_week, {DAY_NAME.format(col="day_of_week")} AS day,
+       retake_course, retake_year, retake_time,
+       required_course, senior_year, required_time,
+       affected_students
+FROM v_retake_conflict
+WHERE (:curriculum_id = '' OR curriculum_id = :curriculum_id)
+ORDER BY affected_students DESC, day_of_week, retake_course
+"""
+
+R14_COHORT_CONFLICT = f"""
+SELECT curriculum_id, year_level, day_of_week, {DAY_NAME.format(col="day_of_week")} AS day,
+       course_a, time_a, course_b, time_b
+FROM v_cohort_conflict
+WHERE (:curriculum_id = '' OR curriculum_id = :curriculum_id)
+ORDER BY year_level, day_of_week, course_a
+"""
+
+R13_EXAM_ROOMS = """
+WITH q AS (
+  SELECT s.section_id, :exam_date AS d, :start_time AS t1, :end_time AS t2,
+         (SELECT COUNT(*) FROM enrollment e WHERE e.section_id = s.section_id) AS students
+  FROM section s
+  WHERE s.section_id = :section_id
+)
+SELECT r.room_code, r.capacity, q.students,
+       CASE
+         WHEN used.course_code IS NOT NULL THEN 'ไม่ว่าง: ใช้สอบ ' || used.course_code
+         WHEN r.capacity IS NULL           THEN 'ไม่ทราบความจุ'
+         WHEN r.capacity < q.students      THEN 'จุไม่พอ'
+         ELSE 'ใช้ได้ (ที่นั่งเหลือ ' || (r.capacity - q.students) || ')'
+       END AS result,
+       (used.course_code IS NULL AND (r.capacity IS NULL OR r.capacity >= q.students)) AS usable
+FROM room r
+CROSS JOIN q
+LEFT JOIN (SELECT ex.room_code, group_concat(s.course_code, ', ') AS course_code
+           FROM exam ex JOIN section s ON s.section_id = ex.section_id, q
+           WHERE ex.exam_date = q.d AND ex.start_time < q.t2 AND q.t1 < ex.end_time
+             AND ex.room_code IS NOT NULL AND ex.section_id <> q.section_id
+           GROUP BY ex.room_code) used ON used.room_code = r.room_code
+ORDER BY (used.course_code IS NULL AND r.capacity >= q.students) DESC,
+         (used.course_code IS NULL AND r.capacity IS NULL) DESC,
+         r.capacity IS NULL, r.capacity, r.room_code
+"""
+
+R15_FREE_ROOMS = """
+SELECT r.room_code, r.capacity,
+       COALESCE(CAST(r.capacity AS TEXT) || ' คน', 'ไม่ทราบความจุ') AS capacity_label
+FROM room r
+WHERE (:min_capacity <= 0 OR r.capacity IS NULL OR r.capacity >= :min_capacity)
+  AND NOT EXISTS (SELECT 1 FROM v_room_usage u
+                  JOIN term t ON t.term_id = u.term_id AND t.is_current = 1
+                  WHERE u.room_code = r.room_code AND u.day_of_week = :day_of_week
+                    AND u.start_time < :end_time AND :start_time < u.end_time)
+ORDER BY r.capacity IS NULL, r.capacity, r.room_code
+"""
+
+R16_EXAM_SAME_DAY = """
+SELECT exam_date, course_1, time_1, course_2, time_2, COUNT(*) AS students
+FROM v_student_exam_clash
+WHERE severity = 'SAME_DAY'
+GROUP BY exam_date, course_1, time_1, course_2, time_2
+ORDER BY exam_date, course_1, course_2
+"""
+
 
 # ------------------------------------------------------------------ ตารางเรียนรายสัปดาห์ (อ่านอย่างเดียว ใช้กับ core.timetable)
 STUDENT_MEETINGS = """

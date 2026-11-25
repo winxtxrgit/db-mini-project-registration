@@ -4,7 +4,7 @@
 - กฎทางธุรกิจทั้งหมดอยู่ใน trigger ของ schema.sql แอปแค่ส่งคำสั่งแล้วแสดงข้อความ error จาก RAISE(ABORT)
 - แอปตรวจสิทธิ์ (ใครเข้าหน้าไหน แก้ข้อมูลของใครได้) และบอกฐานข้อมูลว่าใครทำรายการผ่านตาราง app_session
 
-รัน:  python web/app.py   แล้วเปิด http://127.0.0.1:5000  (บัญชีทดสอบอยู่ใน seed.sql)
+รัน:  python web/app.py   แล้วเปิด http://127.0.0.1:5050  (บัญชีทดสอบอยู่ใน seed.sql)
 """
 import secrets
 
@@ -166,4 +166,4 @@ def bad_request(e):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5050)

@@ -178,6 +178,43 @@ GROUP BY i.instructor_id
 ORDER BY hours_per_week DESC, i.full_name;
 
 .print ''
+.print '=== R11 ความคืบหน้าการจัดตาราง: ชั่วโมงที่วางแล้วเทียบกับชั่วโมงตามหน่วยกิต และสถานะล็อก (เรียงตามลำดับการจัด) ==='
+WITH need AS (   -- credit_pattern เช่น 3(3-0-6) = ทฤษฎี 3 + ปฏิบัติ 0 = 3 ชั่วโมงต่อสัปดาห์
+  SELECT course_code,
+         CAST(substr(p, 1, instr(p, '-') - 1) AS INTEGER)
+         + CAST(substr(substr(p, instr(p, '-') + 1), 1, instr(substr(p, instr(p, '-') + 1), '-') - 1) AS INTEGER)
+           AS hours_required
+  FROM (SELECT course_code, substr(credit_pattern, instr(credit_pattern, '(') + 1) AS p
+        FROM course WHERE credit_pattern LIKE '%(%-%-%)')
+),
+placed AS (
+  SELECT section_id,
+         SUM((CAST(substr(end_time, 1, 2) AS INTEGER) * 60 + CAST(substr(end_time, 4, 2) AS INTEGER)
+            - CAST(substr(start_time, 1, 2) AS INTEGER) * 60 - CAST(substr(start_time, 4, 2) AS INTEGER)) / 60.0)
+           AS hours_placed
+  FROM class_meeting GROUP BY section_id
+)
+SELECT COALESCE(sp.priority, 50) AS priority, c.course_category AS category, s.course_code, c.name_th,
+       s.section_no AS sec,
+       printf('%g', COALESCE(pl.hours_placed, 0)) || '/' || COALESCE(n.hours_required, '?') AS hours,
+       CASE
+         WHEN COALESCE(pl.hours_placed, 0) = 0       THEN 'ยังไม่วางคาบ'
+         WHEN n.hours_required IS NULL               THEN 'ไม่ระบุชั่วโมง'
+         WHEN pl.hours_placed = n.hours_required     THEN 'ครบ'
+         WHEN pl.hours_placed < n.hours_required     THEN 'ขาด ' || printf('%g', n.hours_required - pl.hours_placed) || ' ชม.'
+         ELSE 'เกิน ' || printf('%g', pl.hours_placed - n.hours_required) || ' ชม.'
+       END AS progress,
+       CASE WHEN sp.is_locked = 1 THEN 'ล็อกแล้ว (' || COALESCE(u.username, 'ระบบ') || ')' ELSE 'ยังไม่ล็อก' END AS lock_status
+FROM section s
+JOIN term t   ON t.term_id = s.term_id AND t.is_current = 1
+JOIN course c ON c.course_code = s.course_code
+LEFT JOIN need n    ON n.course_code = s.course_code
+LEFT JOIN placed pl ON pl.section_id = s.section_id
+LEFT JOIN scheduling_priority sp ON sp.section_id = s.section_id
+LEFT JOIN app_user u ON u.user_id = sp.locked_by_user_id
+ORDER BY COALESCE(sp.priority, 50), s.course_code, s.section_no;
+
+.print ''
 .print '=== R12 ภาพรวมตารางเรียนข้ามชั้นปีของหลักสูตร CPE63 (แต่ละช่องคือวิชาที่ชั้นปีนั้นเรียนตามแผน) ==='
 SELECT CASE day_of_week WHEN 1 THEN 'จ.' WHEN 2 THEN 'อ.' WHEN 3 THEN 'พ.' WHEN 4 THEN 'พฤ.' WHEN 5 THEN 'ศ.' WHEN 6 THEN 'ส.' ELSE 'อา.' END AS day,
        start_time || '-' || end_time AS time,

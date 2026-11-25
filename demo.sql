@@ -146,3 +146,10 @@ FROM scheduling_priority p JOIN section s ON s.section_id = p.section_id
 LEFT JOIN app_user u ON u.user_id = p.locked_by_user_id
 WHERE p.section_id = 8;
 UPDATE class_meeting SET day_of_week = 5 WHERE section_id = 8;
+
+.print ''
+.print '--- D22 ปลดล็อก 910-1116 (วิชาส่วนกลาง) แล้ววางคาบวิชาสาขา 310-2308 เพิ่มวันศุกร์: ควรผิด (ต้องล็อกวิชาส่วนกลางให้ครบก่อน)'
+UPDATE scheduling_priority SET is_locked = 0 WHERE section_id = 8;
+INSERT INTO class_meeting (section_id, day_of_week, start_time, end_time, room_code) VALUES (2, 5, '13:00', '16:00', '15303');
+UPDATE scheduling_priority SET is_locked = 1, lock_reason = 'วิชาศึกษาทั่วไป เรียนร่วมหลายคณะ' WHERE section_id = 8;
+SELECT l.entity, l.action, l.detail FROM schedule_log l WHERE l.entity = 'LOCK' ORDER BY l.log_id;

@@ -1,4 +1,4 @@
-"""Automated Test Suite สำหรับตรวจสอบ Database Triggers & Business Rules (D1 - D19, D21)
+"""Automated Test Suite สำหรับตรวจสอบ Database Triggers & Business Rules (D1 - D19, D21, D22)
 รันเดี่ยวๆ: python -m unittest discover -s tests -v
 """
 import sqlite3
@@ -233,7 +233,7 @@ class TriggerBusinessRulesTest(unittest.TestCase):
 
 
 class ScheduleLockTest(unittest.TestCase):
-    """D21 และกฎการล็อกตาราง (issue #16): 910-1116 (section 8) ถูกล็อกไว้ใน seed"""
+    """D21, D22 และกฎการล็อกตาราง (issue #16, #17): 910-1116 (section 8) ถูกล็อกไว้ใน seed"""
 
     def setUp(self):
         self.con = sqlite3.connect(":memory:")
@@ -344,6 +344,52 @@ class ScheduleLockTest(unittest.TestCase):
             self.con.execute("UPDATE class_meeting SET day_of_week = 5 WHERE section_id = 1")
         self.assertEqual(self.one("SELECT day_of_week FROM class_meeting WHERE section_id = 1")[0], 5)
 
+
+    # D22: วิชาส่วนกลางต้องล็อกก่อน (issue #17)
+    FRIDAY_2308 = ("INSERT INTO class_meeting (section_id, day_of_week, start_time, end_time, room_code) "
+                   "VALUES (2, 5, '13:00', '16:00', '15303')")
+
+    def test_d22_service_must_be_locked_before_other_courses(self):
+        """D22: ปลดล็อก 910-1116 แล้ว เพิ่มหรือย้ายคาบวิชาสาขาไม่ได้"""
+        with self.con:
+            self.con.execute("UPDATE scheduling_priority SET is_locked = 0 WHERE section_id = 8")
+        for sql in (self.FRIDAY_2308, "UPDATE class_meeting SET day_of_week = 5 WHERE section_id = 1"):
+            with self.subTest(sql=sql):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    with self.con:
+                        self.con.execute(sql)
+                self.assertIn("ต้องล็อกวิชาส่วนกลางของภาคนี้ให้ครบก่อน", str(ctx.exception))
+
+    def test_other_courses_allowed_when_service_locked(self):
+        """910-1116 ล็อกอยู่ (ตาม seed): วางคาบวิชาสาขาได้ตามปกติ"""
+        with self.con:
+            self.con.execute(self.FRIDAY_2308)
+        self.assertEqual(self.one("SELECT COUNT(*) FROM class_meeting WHERE section_id = 2")[0], 2)
+
+    def test_service_section_itself_editable_while_unlocked(self):
+        """วิชาส่วนกลางที่ยังไม่ล็อก แก้คาบของตัวเองได้ (กฎนี้กันเฉพาะวิชาอื่น)"""
+        with self.con:
+            self.con.execute("UPDATE scheduling_priority SET is_locked = 0 WHERE section_id = 8")
+            self.con.execute("UPDATE class_meeting SET day_of_week = 5 WHERE section_id = 8")
+        self.assertEqual(self.one("SELECT day_of_week FROM class_meeting WHERE section_id = 8")[0], 5)
+
+    def test_service_section_without_meetings_does_not_block(self):
+        """กลุ่มวิชาส่วนกลางที่ยังไม่มีคาบไม่นับ: ลบคาบ 910-1116 ทิ้งแล้ว วิชาสาขาวางคาบได้"""
+        with self.con:
+            self.con.execute("UPDATE scheduling_priority SET is_locked = 0 WHERE section_id = 8")
+            self.con.execute("DELETE FROM class_meeting WHERE section_id = 8")
+            self.con.execute(self.FRIDAY_2308)
+        self.assertEqual(self.one("SELECT COUNT(*) FROM class_meeting WHERE section_id = 2")[0], 2)
+
+    def test_service_rule_only_counts_same_term(self):
+        """วิชาส่วนกลางที่ยังไม่ล็อกในภาคอื่นไม่กันการวางคาบของภาคปัจจุบัน"""
+        with self.con:
+            self.con.execute("INSERT INTO section (section_id, course_code, term_id, section_no, capacity) "
+                             "VALUES (11, '910-1116', '2569-1', '01', 40)")
+            self.con.execute("INSERT INTO class_meeting (section_id, day_of_week, start_time, end_time) "
+                             "VALUES (11, 1, '09:00', '12:00')")
+            self.con.execute(self.FRIDAY_2308)
+        self.assertEqual(self.one("SELECT COUNT(*) FROM class_meeting WHERE section_id = 2")[0], 2)
 
 if __name__ == "__main__":
     unittest.main()

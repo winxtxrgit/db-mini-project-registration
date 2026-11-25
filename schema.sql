@@ -854,12 +854,26 @@ END;
 --     เขียนแยกจาก trg_meeting_before_insert/update เดิม (SQLite มี BEFORE trigger หลายตัวบนตารางเดียวได้)
 ------------------------------------------------------------------
 -- กลุ่มที่ล็อกแล้ว เพิ่ม ย้าย หรือลบคาบเรียนไม่ได้ (ย้ายคาบข้ามกลุ่ม ตรวจทั้งกลุ่มเดิมและกลุ่มใหม่)
+-- และต้องล็อกวิชาส่วนกลางให้ครบก่อนจึงเพิ่มหรือย้ายคาบของวิชาอื่นได้ (issue #17)
 CREATE TRIGGER trg_meeting_lock_before_insert
 BEFORE INSERT ON class_meeting
 BEGIN
   SELECT RAISE(ABORT, 'กลุ่มเรียนนี้ล็อกตารางแล้ว ต้องปลดล็อกก่อน')
   WHERE EXISTS (SELECT 1 FROM scheduling_priority p
                 WHERE p.section_id = NEW.section_id AND p.is_locked = 1);
+
+  -- วิชาส่วนกลางต้องจัดและล็อกก่อน: ถ้ากลุ่มเรียนวิชาส่วนกลางในภาคเดียวกันที่วางคาบแล้วยังล็อกไม่ครบ
+  -- ห้ามเพิ่มหรือย้ายคาบของวิชาอื่น (กลุ่มวิชาส่วนกลางที่ยังไม่มีคาบไม่นับ ไม่งั้นจะวางคาบอะไรไม่ได้เลย)
+  SELECT RAISE(ABORT, 'ต้องล็อกวิชาส่วนกลางของภาคนี้ให้ครบก่อน')
+  WHERE (SELECT c.course_category FROM section s JOIN course c ON c.course_code = s.course_code
+          WHERE s.section_id = NEW.section_id) <> 'service'
+    AND EXISTS (SELECT 1 FROM section ns
+                JOIN section sv ON sv.term_id = ns.term_id AND sv.section_id <> ns.section_id
+                JOIN course cv  ON cv.course_code = sv.course_code AND cv.course_category = 'service'
+                WHERE ns.section_id = NEW.section_id
+                  AND EXISTS (SELECT 1 FROM class_meeting m WHERE m.section_id = sv.section_id)
+                  AND NOT EXISTS (SELECT 1 FROM scheduling_priority p
+                                   WHERE p.section_id = sv.section_id AND p.is_locked = 1));
 END;
 
 CREATE TRIGGER trg_meeting_lock_before_update
@@ -868,6 +882,19 @@ BEGIN
   SELECT RAISE(ABORT, 'กลุ่มเรียนนี้ล็อกตารางแล้ว ต้องปลดล็อกก่อน')
   WHERE EXISTS (SELECT 1 FROM scheduling_priority p
                 WHERE p.section_id IN (OLD.section_id, NEW.section_id) AND p.is_locked = 1);
+
+  -- วิชาส่วนกลางต้องจัดและล็อกก่อน: ถ้ากลุ่มเรียนวิชาส่วนกลางในภาคเดียวกันที่วางคาบแล้วยังล็อกไม่ครบ
+  -- ห้ามเพิ่มหรือย้ายคาบของวิชาอื่น (กลุ่มวิชาส่วนกลางที่ยังไม่มีคาบไม่นับ ไม่งั้นจะวางคาบอะไรไม่ได้เลย)
+  SELECT RAISE(ABORT, 'ต้องล็อกวิชาส่วนกลางของภาคนี้ให้ครบก่อน')
+  WHERE (SELECT c.course_category FROM section s JOIN course c ON c.course_code = s.course_code
+          WHERE s.section_id = NEW.section_id) <> 'service'
+    AND EXISTS (SELECT 1 FROM section ns
+                JOIN section sv ON sv.term_id = ns.term_id AND sv.section_id <> ns.section_id
+                JOIN course cv  ON cv.course_code = sv.course_code AND cv.course_category = 'service'
+                WHERE ns.section_id = NEW.section_id
+                  AND EXISTS (SELECT 1 FROM class_meeting m WHERE m.section_id = sv.section_id)
+                  AND NOT EXISTS (SELECT 1 FROM scheduling_priority p
+                                   WHERE p.section_id = sv.section_id AND p.is_locked = 1));
 END;
 
 CREATE TRIGGER trg_meeting_lock_before_delete

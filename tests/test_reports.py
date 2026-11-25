@@ -1,4 +1,4 @@
-"""Automated Test Suite สำหรับรายงานจัดตาราง R12 - R16
+"""Automated Test Suite สำหรับรายงานจัดตาราง R11 - R16
 รันเดี่ยวๆ: python -m unittest discover -s tests -v
 """
 import sqlite3
@@ -24,6 +24,34 @@ class SchedulerReportsTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.con.close()
+
+    def test_r11_schedule_progress(self):
+        """R11: เรียงตามลำดับการจัด วิชาส่วนกลางที่ล็อกแล้วอยู่บนสุด และชั่วโมงตามหน่วยกิตถูกต้อง"""
+        rows = self.con.execute(R.R11_SCHEDULE_PROGRESS).fetchall()
+        self.assertEqual(len(rows), 10)
+        self.assertEqual([r["priority"] for r in rows], sorted(r["priority"] for r in rows))
+        first = rows[0]
+        self.assertEqual((first["course_code"], first["course_category"], first["is_locked"], first["locked_by"]),
+                         ("910-1116", "service", 1, "scheduler"))
+        cloud = next(r for r in rows if r["course_code"] == "310-2311")   # 3(3-0-6) วาง 3 คาบ คาบละ 1 ชม.
+        self.assertEqual((cloud["hours_placed"], cloud["hours_required"], cloud["progress"]), (3.0, 3, "ครบ"))
+        self.assertTrue(all(r["is_locked"] == 0 for r in rows[1:]))
+
+    def test_r11_progress_short_and_unplaced(self):
+        """R11: กลุ่มที่วางไม่ครบขึ้น "ขาด" และกลุ่มที่ยังไม่มีคาบขึ้น "ยังไม่วางคาบ" (ใช้ฐานข้อมูลแยก)"""
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        con.executescript((ROOT / "schema.sql").read_text(encoding="utf-8"))
+        con.executescript((ROOT / "seed.sql").read_text(encoding="utf-8"))
+        with con:
+            con.execute("UPDATE class_meeting SET end_time = '11:00' WHERE section_id = 1")
+            con.execute("INSERT INTO section (section_id, course_code, term_id, section_no, capacity) "
+                        "VALUES (11, '310-3313', '2569-2', '02', 10)")
+        rows = {(r["course_code"], r["section_no"]): r for r in con.execute(R.R11_SCHEDULE_PROGRESS)}
+        con.close()
+        self.assertEqual(rows[("310-2205", "01")]["progress"], "ขาด 1 ชม.")
+        self.assertEqual(rows[("310-3313", "02")]["progress"], "ยังไม่วางคาบ")
+        self.assertEqual(rows[("310-3313", "02")]["priority"], 50)   # ไม่มีแถวใน scheduling_priority = 50
 
     def test_r12_schedule_overview_and_filter(self):
         """R12: ตารางเรียนข้ามชั้นปีของ CPE63 และกรองเฉพาะชั้นปี"""

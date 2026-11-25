@@ -17,7 +17,7 @@ help:
 	@echo "  make test-sql    - ทดสอบกฎฐานข้อมูลและ Trigger (D1 - D19)"
 	@echo "  make test-web    - ทดสอบระบบเว็บและ API (web/test_app.py)"
 	@echo "  make run-sql     - รันสคริปต์ SQL ทั้งหมดบน SQLite (run.sql)"
-	@echo "  make run-web     - รัน Flask Web Application (พอร์ต 5000)"
+	@echo "  make run-web     - รัน Flask Web Application (พอร์ต 5050)"
 	@echo "  make clean       - ลบไฟล์ชั่วคราว, cache และ test databases"
 	@echo "========================================================================"
 
@@ -55,7 +55,7 @@ run-sql:
 	sqlite3 < run.sql
 
 run-web: $(VENV)
-	@echo "Starting Flask web server on http://127.0.0.1:5000 ..."
+	@echo "Starting Flask web server on http://127.0.0.1:5050 ..."
 	$(PYTHON) web/app.py
 
 clean:

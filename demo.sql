@@ -138,3 +138,11 @@ UPDATE term SET reg_close_at = '2027-01-15 23:59', add_open_at = NULL, add_close
 SELECT l.student_id, s.course_code, l.action, u.username AS actor
 FROM registration_log l JOIN section s ON s.section_id = l.section_id LEFT JOIN app_user u ON u.user_id = l.actor_user_id
 WHERE l.student_id = '6799000005' ORDER BY l.log_id DESC LIMIT 2;
+
+.print ''
+.print '--- D21 ย้ายคาบ 910-1116 ที่ล็อกตารางไว้แล้วไปวันศุกร์: ควรผิด (ต้องปลดล็อกก่อน)'
+SELECT s.course_code, p.priority, p.is_locked, p.lock_reason, u.username AS locked_by
+FROM scheduling_priority p JOIN section s ON s.section_id = p.section_id
+LEFT JOIN app_user u ON u.user_id = p.locked_by_user_id
+WHERE p.section_id = 8;
+UPDATE class_meeting SET day_of_week = 5 WHERE section_id = 8;

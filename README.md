@@ -155,6 +155,10 @@ sqlite3 :memory: ".read run.sql"
 
 ### หน้าเว็บ (Flask)
 
+วิธีที่ง่ายที่สุด: ดับเบิลคลิก `run-web.command` (macOS) หรือ `run-web.bat` (Windows) ที่โฟลเดอร์บนสุดของ repo ต้องมี Python 3.9 ขึ้นไป ไฟล์นี้ติดตั้ง Flask ลง `.venv` ให้เองครั้งแรก เปิดเบราว์เซอร์ให้ และถ้า `web/registration.db` สร้างจาก schema เก่า จะย้ายไฟล์เดิมไปไว้ที่ `web/backups/` แล้วสร้างใหม่ (รายละเอียดใน `scripts/run_web.py`) ปิดเว็บด้วย Ctrl+C หรือปิดหน้าต่าง ถ้า macOS ไม่ยอมเปิดไฟล์ ให้รัน `chmod +x run-web.command` หนึ่งครั้ง
+
+หรือรันเอง:
+
 ```bash
 pip install -r web/requirements.txt
 python web/app.py    # หรือ make run-web

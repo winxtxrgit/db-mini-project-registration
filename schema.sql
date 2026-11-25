@@ -41,7 +41,11 @@ CREATE TABLE course (
   name_th        TEXT NOT NULL,
   name_en        TEXT,
   credits        INTEGER NOT NULL CHECK (credits >= 0),
-  credit_pattern TEXT                            -- '3(3-0-6)' ใช้แสดงผลเท่านั้น
+  credit_pattern TEXT,                           -- '3(3-0-6)' ใช้แสดงผลเท่านั้น
+  -- หมวดวิชาสำหรับลำดับการจัดตาราง: service = วิชาส่วนกลางที่เรียนร่วมหลายสาขา (จัดและล็อกก่อน),
+  -- core = วิชาบังคับสาขา, elective = วิชาเลือก, regular = อื่นๆ
+  course_category TEXT NOT NULL DEFAULT 'regular'
+                  CHECK (course_category IN ('service', 'core', 'elective', 'regular'))
 );
 
 CREATE TABLE prerequisite (
@@ -164,6 +168,19 @@ CREATE TABLE app_session (
   user_id INTEGER NOT NULL REFERENCES app_user(user_id)
 );
 
+-- ลำดับการจัดและการล็อกตารางของแต่ละกลุ่มเรียน (ไม่มีแถว = ยังไม่กำหนดลำดับและไม่ได้ล็อก)
+-- ไม่เก็บ term_id ซ้ำ เพราะ section ระบุภาคเรียนอยู่แล้ว (3NF)
+-- locked_at และ locked_by_user_id ให้ trigger ใส่เองตอนล็อก (ผู้ทำรายการอ่านจาก app_session)
+CREATE TABLE scheduling_priority (
+  section_id        INTEGER PRIMARY KEY REFERENCES section(section_id) ON DELETE CASCADE,
+  priority          INTEGER NOT NULL DEFAULT 50 CHECK (priority BETWEEN 1 AND 99),
+                    -- 1-10 = วิชาส่วนกลาง, 11-30 = วิชาบังคับสาขา, 31-99 = วิชาเลือก/อื่นๆ
+  is_locked         INTEGER NOT NULL DEFAULT 0 CHECK (is_locked IN (0, 1)),
+  lock_reason       TEXT,
+  locked_at         TEXT,
+  locked_by_user_id INTEGER REFERENCES app_user(user_id)    -- NULL = ระบบ / sqlite3
+);
+
 ------------------------------------------------------------------
 -- 5) ผลการเรียน การลงทะเบียน คิวสำรอง และประวัติ
 ------------------------------------------------------------------
@@ -200,11 +217,12 @@ CREATE TABLE registration_log (
   logged_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now', 'localtime'))
 );
 
--- ประวัติการแก้ตาราง: เวลาเรียน เวลาสอบ อาจารย์ผู้สอน (บันทึกด้วย trigger เท่านั้น)
+-- ประวัติการแก้ตาราง: เวลาเรียน เวลาสอบ อาจารย์ผู้สอน และการล็อกตาราง (บันทึกด้วย trigger เท่านั้น)
+-- entity = 'LOCK': action ADD = ล็อก, REMOVE = ปลดล็อก
 CREATE TABLE schedule_log (
   log_id        INTEGER PRIMARY KEY,
   section_id    INTEGER NOT NULL REFERENCES section(section_id),
-  entity        TEXT    NOT NULL CHECK (entity IN ('MEETING', 'EXAM', 'INSTRUCTOR')),
+  entity        TEXT    NOT NULL CHECK (entity IN ('MEETING', 'EXAM', 'INSTRUCTOR', 'LOCK')),
   action        TEXT    NOT NULL CHECK (action IN ('ADD', 'CHANGE', 'REMOVE')),
   detail        TEXT    NOT NULL,
   actor_user_id INTEGER REFERENCES app_user(user_id),
@@ -828,5 +846,95 @@ BEGIN
   INSERT INTO schedule_log (section_id, entity, action, detail, actor_user_id)
   VALUES (OLD.section_id, 'INSTRUCTOR', 'REMOVE',
           (SELECT full_name FROM instructor WHERE instructor_id = OLD.instructor_id),
+          (SELECT user_id FROM v_actor));
+END;
+
+------------------------------------------------------------------
+-- 11) TRIGGER: การล็อกตาราง
+--     เขียนแยกจาก trg_meeting_before_insert/update เดิม (SQLite มี BEFORE trigger หลายตัวบนตารางเดียวได้)
+------------------------------------------------------------------
+-- กลุ่มที่ล็อกแล้ว เพิ่ม ย้าย หรือลบคาบเรียนไม่ได้ (ย้ายคาบข้ามกลุ่ม ตรวจทั้งกลุ่มเดิมและกลุ่มใหม่)
+CREATE TRIGGER trg_meeting_lock_before_insert
+BEFORE INSERT ON class_meeting
+BEGIN
+  SELECT RAISE(ABORT, 'กลุ่มเรียนนี้ล็อกตารางแล้ว ต้องปลดล็อกก่อน')
+  WHERE EXISTS (SELECT 1 FROM scheduling_priority p
+                WHERE p.section_id = NEW.section_id AND p.is_locked = 1);
+END;
+
+CREATE TRIGGER trg_meeting_lock_before_update
+BEFORE UPDATE OF section_id, day_of_week, start_time, end_time, room_code ON class_meeting
+BEGIN
+  SELECT RAISE(ABORT, 'กลุ่มเรียนนี้ล็อกตารางแล้ว ต้องปลดล็อกก่อน')
+  WHERE EXISTS (SELECT 1 FROM scheduling_priority p
+                WHERE p.section_id IN (OLD.section_id, NEW.section_id) AND p.is_locked = 1);
+END;
+
+CREATE TRIGGER trg_meeting_lock_before_delete
+BEFORE DELETE ON class_meeting
+BEGIN
+  SELECT RAISE(ABORT, 'กลุ่มเรียนนี้ล็อกตารางแล้ว ต้องปลดล็อกก่อน')
+  WHERE EXISTS (SELECT 1 FROM scheduling_priority p
+                WHERE p.section_id = OLD.section_id AND p.is_locked = 1);
+END;
+
+-- ล็อกได้เฉพาะกลุ่มที่วางคาบเรียนแล้วอย่างน้อย 1 คาบ
+CREATE TRIGGER trg_priority_before_insert
+BEFORE INSERT ON scheduling_priority
+WHEN NEW.is_locked = 1
+BEGIN
+  SELECT RAISE(ABORT, 'ล็อกได้เฉพาะกลุ่มเรียนที่วางคาบเรียนแล้ว')
+  WHERE NOT EXISTS (SELECT 1 FROM class_meeting WHERE section_id = NEW.section_id);
+END;
+
+CREATE TRIGGER trg_priority_before_update
+BEFORE UPDATE OF is_locked ON scheduling_priority
+WHEN NEW.is_locked = 1 AND OLD.is_locked = 0
+BEGIN
+  SELECT RAISE(ABORT, 'ล็อกได้เฉพาะกลุ่มเรียนที่วางคาบเรียนแล้ว')
+  WHERE NOT EXISTS (SELECT 1 FROM class_meeting WHERE section_id = NEW.section_id);
+END;
+
+-- ล็อก: ใส่เวลาและผู้ล็อก (ถ้าไม่ได้ระบุมา) แล้วบันทึกประวัติ
+-- UPDATE ข้างในแก้แค่ locked_at/locked_by_user_id จึงไม่ปลุก trigger UPDATE OF is_locked ซ้ำ
+CREATE TRIGGER trg_priority_lock_after_insert
+AFTER INSERT ON scheduling_priority
+WHEN NEW.is_locked = 1
+BEGIN
+  UPDATE scheduling_priority
+     SET locked_at         = COALESCE(NEW.locked_at, strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+         locked_by_user_id = COALESCE(NEW.locked_by_user_id, (SELECT user_id FROM v_actor))
+   WHERE section_id = NEW.section_id;
+
+  INSERT INTO schedule_log (section_id, entity, action, detail, actor_user_id)
+  VALUES (NEW.section_id, 'LOCK', 'ADD', 'ล็อกตาราง: ' || COALESCE(NEW.lock_reason, '-'),
+          (SELECT user_id FROM v_actor));
+END;
+
+CREATE TRIGGER trg_priority_lock_after_update
+AFTER UPDATE OF is_locked ON scheduling_priority
+WHEN NEW.is_locked = 1 AND OLD.is_locked = 0
+BEGIN
+  UPDATE scheduling_priority
+     SET locked_at         = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'),
+         locked_by_user_id = (SELECT user_id FROM v_actor)
+   WHERE section_id = NEW.section_id;
+
+  INSERT INTO schedule_log (section_id, entity, action, detail, actor_user_id)
+  VALUES (NEW.section_id, 'LOCK', 'ADD', 'ล็อกตาราง: ' || COALESCE(NEW.lock_reason, '-'),
+          (SELECT user_id FROM v_actor));
+END;
+
+-- ปลดล็อก: ล้างเวลา ผู้ล็อก และเหตุผล แล้วบันทึกประวัติ
+CREATE TRIGGER trg_priority_unlock_after_update
+AFTER UPDATE OF is_locked ON scheduling_priority
+WHEN NEW.is_locked = 0 AND OLD.is_locked = 1
+BEGIN
+  UPDATE scheduling_priority
+     SET locked_at = NULL, locked_by_user_id = NULL, lock_reason = NULL
+   WHERE section_id = NEW.section_id;
+
+  INSERT INTO schedule_log (section_id, entity, action, detail, actor_user_id)
+  VALUES (NEW.section_id, 'LOCK', 'REMOVE', 'ปลดล็อก (เหตุผลเดิม: ' || COALESCE(OLD.lock_reason, '-') || ')',
           (SELECT user_id FROM v_actor));
 END;

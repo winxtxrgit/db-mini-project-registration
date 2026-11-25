@@ -1,4 +1,4 @@
-"""Automated Test Suite สำหรับตรวจสอบ Database Triggers & Business Rules (D1 - D19)
+"""Automated Test Suite สำหรับตรวจสอบ Database Triggers & Business Rules (D1 - D19, D21)
 รันเดี่ยวๆ: python -m unittest discover -s tests -v
 """
 import sqlite3
@@ -300,6 +300,119 @@ class TriggerBusinessRulesTest(unittest.TestCase):
             "ORDER BY log_id DESC LIMIT 1"
         ).fetchone()[0]
         self.assertEqual(action, "ADD")
+
+
+class ScheduleLockTest(unittest.TestCase):
+    """D21 และกฎการล็อกตาราง (issue #16): 910-1116 (section 8) ถูกล็อกไว้ใน seed"""
+
+    def setUp(self):
+        self.con = sqlite3.connect(":memory:")
+        self.con.execute("PRAGMA foreign_keys = ON")
+        self.con.executescript((ROOT / "schema.sql").read_text(encoding="utf-8"))
+        self.con.executescript((ROOT / "seed.sql").read_text(encoding="utf-8"))
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+
+    def set_actor(self, username: str):
+        with self.con:
+            self.con.execute("DELETE FROM app_session")
+            self.con.execute(
+                "INSERT INTO app_session (id, user_id) SELECT 1, user_id FROM app_user WHERE username = ?",
+                (username,))
+
+    def one(self, sql, *args):
+        return self.con.execute(sql, args).fetchone()
+
+    def lock_log(self, section_id):
+        return self.con.execute(
+            "SELECT l.action, u.username FROM schedule_log l LEFT JOIN app_user u ON u.user_id = l.actor_user_id "
+            "WHERE l.entity = 'LOCK' AND l.section_id = ? ORDER BY l.log_id", (section_id,)).fetchall()
+
+    def test_seed_categories_and_priorities(self):
+        """seed: ทุกกลุ่มเรียนมีลำดับการจัด, 910-1116 ล็อกโดย scheduler และไม่มีประวัติตั้งต้นใน schedule_log"""
+        self.assertEqual(self.one("SELECT COUNT(*) FROM section s LEFT JOIN scheduling_priority p USING (section_id) "
+                                  "WHERE p.section_id IS NULL")[0], 0)
+        self.assertEqual(self.one("SELECT course_category FROM course WHERE course_code = '910-1116'")[0], "service")
+        self.assertEqual(self.one("SELECT course_category FROM course WHERE course_code = '310-2309'")[0], "core")
+        self.assertEqual(self.one("SELECT course_category FROM course WHERE course_code = '310-3313'")[0], "elective")
+        locked = self.one("SELECT p.is_locked, p.locked_at IS NOT NULL, u.username FROM scheduling_priority p "
+                          "LEFT JOIN app_user u ON u.user_id = p.locked_by_user_id WHERE p.section_id = 8")
+        self.assertEqual(locked, (1, 1, "scheduler"))
+        self.assertEqual(self.one("SELECT COUNT(*) FROM scheduling_priority WHERE is_locked = 1")[0], 1)
+        self.assertEqual(self.one("SELECT COUNT(*) FROM schedule_log")[0], 0)
+
+    def test_d21_locked_section_meeting_change_blocked(self):
+        """D21: กลุ่มที่ล็อกแล้ว ย้าย เพิ่ม หรือลบคาบไม่ได้"""
+        statements = [
+            "UPDATE class_meeting SET day_of_week = 5 WHERE section_id = 8",
+            "INSERT INTO class_meeting (section_id, day_of_week, start_time, end_time) VALUES (8, 5, '13:00', '16:00')",
+            "DELETE FROM class_meeting WHERE section_id = 8",
+        ]
+        for sql in statements:
+            with self.subTest(sql=sql):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    with self.con:
+                        self.con.execute(sql)
+                self.assertIn("ล็อกตารางแล้ว", str(ctx.exception))
+        self.assertEqual(self.one("SELECT day_of_week FROM class_meeting WHERE section_id = 8")[0], 2)
+
+    def test_moving_meeting_into_locked_section_blocked(self):
+        """ย้ายคาบจากกลุ่มที่ไม่ล็อกไปใส่กลุ่มที่ล็อกแล้วก็ไม่ได้"""
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            with self.con:
+                self.con.execute("UPDATE class_meeting SET section_id = 8 WHERE section_id = 1")
+        self.assertIn("ล็อกตารางแล้ว", str(ctx.exception))
+
+    def test_unlock_then_change_allowed_and_logged(self):
+        """ปลดล็อกแล้วย้ายคาบได้ และบันทึกการปลดล็อกพร้อมผู้ทำรายการ"""
+        self.set_actor("scheduler")
+        with self.con:
+            self.con.execute("UPDATE scheduling_priority SET is_locked = 0 WHERE section_id = 8")
+            self.con.execute("UPDATE class_meeting SET day_of_week = 5 WHERE section_id = 8")
+        self.assertEqual(self.one("SELECT day_of_week FROM class_meeting WHERE section_id = 8")[0], 5)
+        self.assertEqual(self.one("SELECT locked_at, locked_by_user_id, lock_reason FROM scheduling_priority "
+                                  "WHERE section_id = 8"), (None, None, None))
+        self.assertEqual(self.lock_log(8), [("REMOVE", "scheduler")])
+
+    def test_lock_records_time_actor_and_log(self):
+        """ล็อกกลุ่มที่มีคาบแล้ว: trigger ใส่เวลาและผู้ล็อกจาก app_session และบันทึก LOCK ADD"""
+        self.set_actor("scheduler")
+        with self.con:
+            self.con.execute("UPDATE scheduling_priority SET is_locked = 1, lock_reason = 'ทดสอบ' WHERE section_id = 1")
+        row = self.one("SELECT p.locked_at IS NOT NULL, u.username FROM scheduling_priority p "
+                       "JOIN app_user u ON u.user_id = p.locked_by_user_id WHERE p.section_id = 1")
+        self.assertEqual(row, (1, "scheduler"))
+        self.assertEqual(self.lock_log(1), [("ADD", "scheduler")])
+        detail = self.one("SELECT detail FROM schedule_log WHERE entity = 'LOCK' AND section_id = 1")[0]
+        self.assertIn("ทดสอบ", detail)
+
+    def test_cannot_lock_section_without_meetings(self):
+        """ล็อกได้เฉพาะกลุ่มที่วางคาบแล้ว ทั้งตอนเพิ่มแถวที่ล็อกเลยและตอนเปลี่ยนจากไม่ล็อกเป็นล็อก"""
+        with self.con:
+            self.con.execute("INSERT INTO section (section_id, course_code, term_id, section_no, capacity) "
+                             "VALUES (11, '310-3313', '2569-2', '02', 10)")
+            self.con.execute("INSERT INTO section (section_id, course_code, term_id, section_no, capacity) "
+                             "VALUES (12, '310-3313', '2569-2', '03', 10)")
+            self.con.execute("INSERT INTO scheduling_priority (section_id, priority) VALUES (12, 40)")
+        cases = [
+            "INSERT INTO scheduling_priority (section_id, priority, is_locked) VALUES (11, 40, 1)",
+            "UPDATE scheduling_priority SET is_locked = 1 WHERE section_id = 12",
+        ]
+        for sql in cases:
+            with self.subTest(sql=sql):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    with self.con:
+                        self.con.execute(sql)
+                self.assertIn("ล็อกได้เฉพาะกลุ่มเรียนที่วางคาบเรียนแล้ว", str(ctx.exception))
+        self.assertEqual(self.lock_log(11) + self.lock_log(12), [])
+
+    def test_unlocked_sections_unaffected(self):
+        """กลุ่มที่ไม่ได้ล็อกยังแก้คาบได้ตามปกติ (กฎเดิมของ trg_meeting_before_* ยังทำงาน)"""
+        with self.con:
+            self.con.execute("UPDATE class_meeting SET day_of_week = 5 WHERE section_id = 1")
+        self.assertEqual(self.one("SELECT day_of_week FROM class_meeting WHERE section_id = 1")[0], 5)
 
 
 if __name__ == "__main__":

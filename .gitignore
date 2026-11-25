@@ -8,6 +8,8 @@ __pycache__/
 
 # ฐานข้อมูลที่หน้าเว็บสร้างเองตอนรัน (สร้างใหม่ได้จาก schema.sql + seed.sql)
 web/registration.db
+# ฐานข้อมูลเก่าที่ run-web ย้ายออกตอน schema เปลี่ยน
+web/backups/
 
 # ไฟล์ล็อกของ Excel ตอนเปิดไฟล์
 ~$*.xlsx

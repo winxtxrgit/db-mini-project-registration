@@ -1,0 +1,4 @@
+# ไฟล์เปิดเว็บ: .bat ต้องเป็น CRLF ให้ cmd.exe อ่านถูก ส่วน .command และ .sh ต้องเป็น LF
+*.bat     text eol=crlf
+*.command text eol=lf
+*.sh      text eol=lf

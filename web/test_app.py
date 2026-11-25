@@ -274,6 +274,83 @@ class SchedulerTests(Base):
         r_forbidden = self.c.get("/schedule/overview")
         self.assertEqual(r_forbidden.status_code, 403)
 
+    # ---------- ล็อกตาราง (#18)
+    def lock_rows(self, section_id):
+        return self.sql("SELECT l.action, u.username FROM schedule_log l JOIN app_user u ON u.user_id = l.actor_user_id "
+                        "WHERE l.entity = 'LOCK' AND l.section_id = ? ORDER BY l.log_id", section_id)
+
+    def test_lock_blocks_meeting_edit_then_unlock_allows(self):
+        mid = self.sql("SELECT meeting_id FROM class_meeting WHERE section_id = 1")[0][0]
+        r = self.post("/schedule/sections/1/lock", lock_reason="ทดสอบล็อก")
+        self.assertIn(("ok", "ล็อกตาราง 310-2205 วิศวกรรมซอฟต์แวร์ กลุ่ม 01 แล้ว"), flashes(r))
+        self.assertEqual(self.sql("SELECT p.is_locked, p.lock_reason, u.username FROM scheduling_priority p "
+                                  "JOIN app_user u ON u.user_id = p.locked_by_user_id WHERE p.section_id = 1"),
+                         [(1, "ทดสอบล็อก", "scheduler")])
+        # ฟอร์มแก้คาบของกลุ่มที่ล็อกถูกซ่อน แต่ถ้าส่งมาเองต้องเห็นข้อความจาก trigger
+        page = self.c.get("/schedule/").get_data(as_text=True)
+        self.assertNotIn(f'action="/schedule/meetings/{mid}"', page)
+        r = self.post(f"/schedule/meetings/{mid}", day_of_week="5", start_time="09:00", end_time="12:00",
+                      room_code="15208")
+        self.assertIn(("error", "ไม่สำเร็จ: กลุ่มเรียนนี้ล็อกตารางแล้ว ต้องปลดล็อกก่อน"), flashes(r))
+        r = self.post("/schedule/sections/1/meetings", day_of_week="5", start_time="13:00", end_time="16:00",
+                      room_code="")
+        self.assertIn(("error", "ไม่สำเร็จ: กลุ่มเรียนนี้ล็อกตารางแล้ว ต้องปลดล็อกก่อน"), flashes(r))
+
+        r = self.post("/schedule/sections/1/unlock")
+        self.assertIn(("ok", "ปลดล็อก 310-2205 วิศวกรรมซอฟต์แวร์ กลุ่ม 01 แล้ว"), flashes(r))
+        r = self.post(f"/schedule/meetings/{mid}", day_of_week="5", start_time="09:00", end_time="12:00",
+                      room_code="15208")
+        self.assertIn(("ok", "แก้เวลาเรียนแล้ว"), flashes(r))
+        self.assertEqual(self.lock_rows(1), [("ADD", "scheduler"), ("REMOVE", "scheduler")])
+
+    def test_seed_locked_section_shows_unlock_and_hides_meeting_form(self):
+        mid = self.sql("SELECT meeting_id FROM class_meeting WHERE section_id = 8")[0][0]
+        page = self.c.get("/schedule/").get_data(as_text=True)
+        self.assertIn('action="/schedule/sections/8/unlock"', page)
+        self.assertNotIn('action="/schedule/sections/8/lock"', page)
+        self.assertNotIn(f'action="/schedule/meetings/{mid}"', page)
+        self.assertNotIn('action="/schedule/sections/8/meetings"', page)
+        self.assertIn('action="/schedule/sections/1/lock"', page)
+        self.assertIn("ความคืบหน้าการจัดตาราง", page)
+        self.assertIn("R11", page)
+
+    def test_cannot_lock_section_without_meetings(self):
+        self.sql("INSERT INTO section (section_id, course_code, term_id, section_no, capacity) "
+                 "VALUES (11, '310-3313', '2569-2', '02', 10)")
+        page = self.c.get("/schedule/").get_data(as_text=True)
+        self.assertNotIn('action="/schedule/sections/11/lock"', page)
+        r = self.post("/schedule/sections/11/lock")
+        self.assertIn(("error", "ไม่สำเร็จ: ล็อกได้เฉพาะกลุ่มเรียนที่วางคาบเรียนแล้ว"), flashes(r))
+
+    def test_service_first_banner_and_rule(self):
+        self.post("/schedule/sections/8/unlock")
+        page = self.c.get("/schedule/").get_data(as_text=True)
+        self.assertIn("ต้องล็อกวิชาส่วนกลางให้ครบก่อน", page)
+        r = self.post("/schedule/sections/2/meetings", day_of_week="5", start_time="13:00", end_time="16:00",
+                      room_code="15303")
+        self.assertIn(("error", "ไม่สำเร็จ: ต้องล็อกวิชาส่วนกลางของภาคนี้ให้ครบก่อน"), flashes(r))
+        self.post("/schedule/sections/8/lock", lock_reason="ล็อกคืน")
+        self.assertNotIn("ต้องล็อกวิชาส่วนกลางให้ครบก่อน", self.c.get("/schedule/").get_data(as_text=True))
+
+    def test_log_page_shows_lock_entries(self):
+        self.post("/schedule/sections/1/lock")
+        self.post("/schedule/sections/1/unlock")
+        r = self.c.get("/schedule/log")
+        self.assertEqual(r.status_code, 200)
+        body = r.get_data(as_text=True)
+        self.assertIn("ล็อกตาราง", body)
+        self.assertIn("ปลดล็อก", body)
+
+    def test_only_scheduler_can_lock(self):
+        for user in ("admin", "6799000001"):
+            with self.subTest(user=user):
+                self.login(user)
+                for url in ("/schedule/sections/1/lock", "/schedule/sections/8/unlock"):
+                    r = self.c.post(url, data={"csrf_token": self.csrf()})
+                    self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.sql("SELECT section_id, is_locked FROM scheduling_priority "
+                                  "WHERE section_id IN (1, 8) ORDER BY section_id"), [(1, 0), (8, 1)])
+
     def test_free_rooms_search_r15_and_exam_rooms_r13(self):
         r = self.c.get("/schedule/rooms?day=3&start=09:00&end=12:00&min_cap=0")
         self.assertEqual(r.status_code, 200)

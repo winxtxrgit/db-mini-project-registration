@@ -25,7 +25,7 @@ INSERT INTO term (term_id, academic_year, semester, is_current) VALUES
 INSERT INTO term (term_id, academic_year, semester, is_current, reg_open_at, reg_close_at, max_credits) VALUES
  ('2569-2', 2569, 2, 1, '2026-10-20 08:00', '2027-01-15 23:59', 22);
 
-INSERT INTO course VALUES
+INSERT INTO course (course_code, name_th, name_en, credits, credit_pattern) VALUES
  ('300-1101','คณิตศาสตร์วิศวกรรม 1','Engineering Mathematics 1',3,'3(3-0-6)'),
  ('300-1103','ฟิสิกส์','Physics',3,'3(3-0-6)'),
  ('300-1104','ปฏิบัติการฟิสิกส์','Physics Laboratory',1,'1(0-3-2)'),
@@ -211,6 +211,32 @@ DROP TABLE num;
 -- เก็บประวัติไว้เฉพาะของนักศึกษาสมมุติหลัก
 DELETE FROM registration_log WHERE student_id NOT LIKE '6799%';
 
+------------------------------------------------------------------
+-- หมวดวิชาและลำดับการจัดตาราง
+--   service  = วิชาศึกษาทั่วไป (9xx) และวิชาพื้นฐานวิศวกรรม (300-xxxx) ที่เรียนร่วมหลายสาขา
+--   core     = วิชาบังคับในแผนการเรียน
+--   elective = วิชาเลือกในแผน และ 310-3313 (หัวข้อคัดสรร)
+--   regular  = อื่นๆ เช่น 100-2102 ที่ไม่อยู่ในแผนของ CPE63
+------------------------------------------------------------------
+UPDATE course SET course_category = 'service' WHERE course_code GLOB '9*' OR course_code GLOB '300-*';
+UPDATE course SET course_category = 'core'
+WHERE course_category = 'regular'
+  AND course_code IN (SELECT course_code FROM study_plan WHERE is_required = 1);
+UPDATE course SET course_category = 'elective'
+WHERE course_category = 'regular'
+  AND (course_code IN (SELECT course_code FROM study_plan WHERE is_required = 0) OR course_code = '310-3313');
+
+-- 910-1116 (วิชาส่วนกลาง) จัดและล็อกไว้ก่อนเปิดภาค ส่วนกลุ่มอื่นยังไม่ล็อก
+INSERT INTO scheduling_priority (section_id, priority, is_locked, lock_reason, locked_at) VALUES
+ (8, 1, 1, 'วิชาศึกษาทั่วไป เรียนร่วมหลายคณะ', '2026-10-15 09:00:00');
+
+INSERT INTO scheduling_priority (section_id, priority)
+SELECT s.section_id,
+       CASE c.course_category WHEN 'service' THEN 5 WHEN 'core' THEN 20 WHEN 'elective' THEN 40 ELSE 50 END
+FROM section s
+JOIN course c ON c.course_code = s.course_code
+WHERE s.section_id <> 8;
+
 -- ข้อมูลตั้งต้นของตารางไม่ใช่การแก้ตาราง จึงไม่เก็บใน schedule_log
 DELETE FROM schedule_log;
 
@@ -228,3 +254,8 @@ INSERT INTO app_user (username, password_hash, role, student_id)
 SELECT student_id, 'pbkdf2:sha256:600000$o3hUhHVS1HJqZDue$719e5cfcd8eaacfe520dac5e99025a461071f40123394dd01ac36ea0a646532e', 'student', student_id
 FROM student WHERE curriculum_id <> 'EXT'
 ORDER BY student_id;
+
+-- 910-1116 ถูกล็อกโดยอาจารย์ผู้จัดตาราง (ใส่หลังสร้างบัญชีผู้ใช้ เพราะตอนล็อกข้างบนยังไม่มีบัญชี)
+UPDATE scheduling_priority
+   SET locked_by_user_id = (SELECT user_id FROM app_user WHERE username = 'scheduler')
+ WHERE section_id = 8;

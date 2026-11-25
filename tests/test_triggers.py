@@ -231,6 +231,76 @@ class TriggerBusinessRulesTest(unittest.TestCase):
         self.assertEqual(f0290_enrolled, 0)
         self.assertEqual(f0291_enrolled, 1)
 
+    # D19: Drop period separated from registration/add period
+    def _set_drop_only_window(self):
+        """ปิดช่วงลงทะเบียนปกติและเปิดเฉพาะช่วงลดวิชาของภาค 2569-2"""
+        with self.con:
+            self.con.execute(
+                "UPDATE term SET reg_open_at = '2000-01-01 00:00', reg_close_at = '2000-01-02 00:00', "
+                "add_open_at = NULL, add_close_at = NULL, "
+                "drop_open_at = '2000-01-01 00:00', drop_close_at = '2099-12-31 23:59' "
+                "WHERE term_id = '2569-2'"
+            )
+
+    def test_d19_drop_period_allows_student_drop(self):
+        """D19a: ปิดช่วงลงทะเบียนและเปิดเฉพาะช่วงลดวิชา นักศึกษาถอน section 3 เองได้"""
+        self._set_drop_only_window()
+        can_add, can_drop = self.con.execute(
+            "SELECT can_add, can_drop FROM v_term_status WHERE term_id = '2569-2'"
+        ).fetchone()
+        self.assertEqual((can_add, can_drop), (0, 1))
+
+        self.set_actor("6799000005")
+        with self.con:
+            self.con.execute("DELETE FROM enrollment WHERE student_id = '6799000005' AND section_id = 3")
+        self.clear_actor()
+
+        rem = self.con.execute(
+            "SELECT COUNT(*) FROM enrollment WHERE student_id = '6799000005' AND section_id = 3"
+        ).fetchone()[0]
+        self.assertEqual(rem, 0)
+        action = self.con.execute(
+            "SELECT action FROM registration_log WHERE student_id = '6799000005' AND section_id = 3 "
+            "ORDER BY log_id DESC LIMIT 1"
+        ).fetchone()[0]
+        self.assertEqual(action, "DROP")
+
+    def test_d19_drop_period_blocks_student_reenroll(self):
+        """D19b: ช่วงลดวิชาอย่างเดียว ถ้านักศึกษาลง section 3 กลับ ต้องติด trigger ช่วงเพิ่มวิชา"""
+        self._set_drop_only_window()
+        self.set_actor("6799000005")
+        with self.con:
+            self.con.execute("DELETE FROM enrollment WHERE student_id = '6799000005' AND section_id = 3")
+
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            with self.con:
+                self.con.execute("INSERT INTO enrollment (student_id, section_id) VALUES ('6799000005', 3)")
+        self.clear_actor()
+        self.assertIn("ไม่อยู่ในช่วงลงทะเบียนหรือช่วงเพิ่มวิชา", str(ctx.exception))
+
+    def test_d19_add_period_allows_student_reenroll(self):
+        """D19c: เปิดช่วงเพิ่มวิชาแล้ว นักศึกษาลง section 3 ใหม่ได้"""
+        self._set_drop_only_window()
+        self.set_actor("6799000005")
+        with self.con:
+            self.con.execute("DELETE FROM enrollment WHERE student_id = '6799000005' AND section_id = 3")
+            self.con.execute(
+                "UPDATE term SET add_open_at = '2000-01-01 00:00', add_close_at = '2099-12-31 23:59' "
+                "WHERE term_id = '2569-2'"
+            )
+            self.con.execute("INSERT INTO enrollment (student_id, section_id) VALUES ('6799000005', 3)")
+        self.clear_actor()
+
+        enrolled = self.con.execute(
+            "SELECT COUNT(*) FROM enrollment WHERE student_id = '6799000005' AND section_id = 3"
+        ).fetchone()[0]
+        self.assertEqual(enrolled, 1)
+        action = self.con.execute(
+            "SELECT action FROM registration_log WHERE student_id = '6799000005' AND section_id = 3 "
+            "ORDER BY log_id DESC LIMIT 1"
+        ).fetchone()[0]
+        self.assertEqual(action, "ADD")
+
 
 class ScheduleLockTest(unittest.TestCase):
     """D21 และกฎการล็อกตาราง (issue #16): 910-1116 (section 8) ถูกล็อกไว้ใน seed"""

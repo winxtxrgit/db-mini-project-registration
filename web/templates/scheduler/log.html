@@ -1,17 +1,19 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
-{% set ENTITY = {'MEETING': ('เวลาเรียน', 'clock'), 'EXAM': ('เวลาสอบ', 'calendar'), 'INSTRUCTOR': ('อาจารย์', 'user')} %}
+{% set ENTITY = {'MEETING': ('เวลาเรียน', 'clock'), 'EXAM': ('เวลาสอบ', 'calendar'), 'INSTRUCTOR': ('อาจารย์', 'user'), 'LOCK': ('ล็อกตาราง', 'lock')} %}
 {% set ACTION = {'ADD': ('ok', 'เพิ่ม', 'plus'), 'CHANGE': ('warn', 'แก้', 'history'), 'REMOVE': ('bad', 'ลบ', 'trash')} %}
+{#- entity LOCK: ADD = ล็อก, REMOVE = ปลดล็อก -#}
+{% set LOCK_ACTION = {'ADD': ('info', 'ล็อก', 'lock'), 'REMOVE': ('warn', 'ปลดล็อก', 'lock')} %}
 {% block title %}ประวัติการแก้ตาราง{% endblock %}
 {% block content %}
-{{ ui.page_header('ประวัติการแก้ตาราง', 'บันทึกโดย trigger ทุกครั้งที่เพิ่ม แก้ หรือลบ เวลาเรียน เวลาสอบ และอาจารย์ผู้สอน (วัน 1 = จันทร์) · ล่าสุด 300 รายการ') }}
+{{ ui.page_header('ประวัติการแก้ตาราง', 'บันทึกโดย trigger ทุกครั้งที่เพิ่ม แก้ หรือลบ เวลาเรียน เวลาสอบ อาจารย์ผู้สอน และทุกครั้งที่ล็อกหรือปลดล็อกตาราง (วัน 1 = จันทร์) · ล่าสุด 300 รายการ') }}
 <section class="card flush">
   {% if logs %}
   <div class="table-scroll"><table class="stack">
     <thead><tr><th scope="col" class="num">#</th><th scope="col">เวลา</th><th scope="col">วิชา</th><th scope="col">เรื่อง</th><th scope="col">รายการ</th><th scope="col">รายละเอียด</th><th scope="col">ผู้ทำ</th></tr></thead>
     <tbody>
     {% for r in logs %}
-    {% set ek, eic = ENTITY[r.entity] %}{% set ak, atext, aic = ACTION[r.action] %}
+    {% set ek, eic = ENTITY[r.entity] %}{% set ak, atext, aic = (LOCK_ACTION if r.entity == 'LOCK' else ACTION)[r.action] %}
     <tr>
       <td class="num muted" data-label="#">{{ r.log_id }}</td>
       <td class="nowrap" data-label="เวลา">{{ r.logged_at|thdatetime }}</td>

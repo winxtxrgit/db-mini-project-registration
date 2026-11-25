@@ -1,7 +1,8 @@
-"""อาจารย์ผู้จัดตาราง (scheduler): เวลาเรียน ห้อง อาจารย์ผู้สอน เวลาสอบ
+"""อาจารย์ผู้จัดตาราง (scheduler): เวลาเรียน ห้อง อาจารย์ผู้สอน เวลาสอบ และการล็อกตาราง
 
 ฝ่ายทะเบียนเปิดดูหน้าเหล่านี้ได้แต่แก้ไม่ได้ (ปุ่มแก้ไขแสดงเฉพาะผู้จัดตาราง)
-กฎห้องซ้ำ อาจารย์ซ้ำ นักศึกษาที่ลงแล้วเรียน/สอบชน และห้องสอบจุไม่พอ ตรวจใน trigger ทั้งหมด
+กฎห้องซ้ำ อาจารย์ซ้ำ นักศึกษาที่ลงแล้วเรียน/สอบชน ห้องสอบจุไม่พอ และการล็อกตาราง ตรวจใน trigger ทั้งหมด
+หน้าเว็บแค่ซ่อนฟอร์มของกลุ่มที่ล็อกแล้ว ถ้ามีคนส่งฟอร์มมาเอง trigger จะปฏิเสธและแสดงข้อความ error
 """
 from collections import defaultdict
 
@@ -52,10 +53,15 @@ def home():
         )
     for t in rows(R.SCHED_INSTRUCTORS):
         teachers[t["section_id"]].append(t)
+    progress = rows(R.R11_SCHEDULE_PROGRESS)
     return render_template(
         "scheduler/home.html",
         sections=rows(R.SCHED_SECTIONS), meetings=meetings, exams=exams, teachers=teachers,
         exam_rooms=exam_rooms,
+        progress=progress, progress_by_id={p["section_id"]: p for p in progress},
+        # วิชาส่วนกลางที่วางคาบแล้วแต่ยังไม่ล็อก: ระหว่างนี้ trigger ไม่ให้วางคาบวิชาอื่น (R11)
+        service_pending=[p for p in progress
+                         if p["course_category"] == "service" and p["hours_placed"] and not p["is_locked"]],
         exam_same_day=rows(R.R16_EXAM_SAME_DAY),
         rooms=rows("SELECT room_code, capacity FROM room ORDER BY room_code"),
         instructors=rows("SELECT instructor_id, full_name FROM instructor ORDER BY full_name"),
@@ -195,6 +201,27 @@ def exam_delete(exam_id):
     sid = _section_of("exam", "exam_id", exam_id)
     write([("DELETE FROM exam WHERE exam_id = ?", (exam_id,))], "ลบเวลาสอบแล้ว")
     return back(sid)
+
+
+# ------------------------------------------------------------------ ล็อกตาราง
+@bp.post("/sections/<int:section_id>/lock")
+@require(*EDIT)
+def section_lock(section_id):
+    reason = form_str("lock_reason", required=False)
+    # มีแถวอยู่แล้ว = UPDATE (trigger ตรวจว่ามีคาบแล้ว ใส่เวลา/ผู้ล็อก และบันทึกประวัติ) / ยังไม่มี = INSERT
+    write([("INSERT INTO scheduling_priority (section_id, is_locked, lock_reason) VALUES (?, 1, ?) "
+            "ON CONFLICT (section_id) DO UPDATE SET is_locked = 1, lock_reason = excluded.lock_reason",
+            (section_id, reason))],
+          f"ล็อกตาราง {section_label(section_id)} แล้ว")
+    return back(section_id)
+
+
+@bp.post("/sections/<int:section_id>/unlock")
+@require(*EDIT)
+def section_unlock(section_id):
+    write([("UPDATE scheduling_priority SET is_locked = 0 WHERE section_id = ?", (section_id,))],
+          f"ปลดล็อก {section_label(section_id)} แล้ว")
+    return back(section_id)
 
 
 # ------------------------------------------------------------------ ห้อง อาจารย์ ประวัติ

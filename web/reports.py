@@ -295,13 +295,18 @@ ORDER BY CASE u.role WHEN 'admin' THEN 1 WHEN 'scheduler' THEN 2 ELSE 3 END, u.u
 """
 
 # ------------------------------------------------------------------ ผู้จัดตาราง
+# กลุ่มเรียนในหน้าผู้จัดตาราง เรียงตามลำดับการจัด (ไม่มีแถวใน scheduling_priority = 50 และไม่ล็อก)
 SCHED_SECTIONS = """
-SELECT s.section_id, s.course_code, c.name_th, s.section_no, s.capacity,
-       (SELECT COUNT(*) FROM enrollment e WHERE e.section_id = s.section_id) AS enrolled
+SELECT s.section_id, s.course_code, c.name_th, s.section_no, s.capacity, c.course_category,
+       (SELECT COUNT(*) FROM enrollment e WHERE e.section_id = s.section_id) AS enrolled,
+       COALESCE(sp.priority, 50) AS priority, COALESCE(sp.is_locked, 0) AS is_locked,
+       sp.lock_reason, sp.locked_at, u.username AS locked_by
 FROM section s
 JOIN course c ON c.course_code = s.course_code
 JOIN term t ON t.term_id = s.term_id AND t.is_current = 1
-ORDER BY s.course_code, s.section_no
+LEFT JOIN scheduling_priority sp ON sp.section_id = s.section_id
+LEFT JOIN app_user u ON u.user_id = sp.locked_by_user_id
+ORDER BY COALESCE(sp.priority, 50), s.course_code, s.section_no
 """
 
 SCHED_MEETINGS = """

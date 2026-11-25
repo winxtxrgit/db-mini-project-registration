@@ -16,10 +16,48 @@
 {% set n_noteacher = sections|rejectattr('section_id', 'in', teachers.keys()|list)|list|length %}
 {% set n_nomeet = sections|rejectattr('section_id', 'in', meetings.keys()|list)|list|length %}
 {% set n_noexam = sections|rejectattr('section_id', 'in', exams.keys()|list)|list|length %}
+{% set n_locked = sections|selectattr('is_locked')|list|length %}
+{% set n_complete = progress|selectattr('progress', 'equalto', 'ครบ')|list|length %}
+{% set CATEGORY = {'service': 'วิชาส่วนกลาง', 'core': 'บังคับสาขา', 'elective': 'วิชาเลือก', 'regular': 'อื่นๆ'} %}
 {% block title %}จัดตาราง{% endblock %}
 {% block content %}
-{{ ui.page_header('ตารางเรียนและตารางสอบ', 'ภาคเรียน ' ~ term.term_id ~ ' · ทุกการแก้ไขถูกตรวจโดย trigger: ห้องซ้ำ (ยกเว้นกลุ่มของวิชาเดียวกันเรียนรวม), อาจารย์สอนสองที่, นักศึกษาที่ลงแล้วเรียน/สอบชน, ห้องสอบจุไม่พอ') }}
+{{ ui.page_header('ตารางเรียนและตารางสอบ', 'ภาคเรียน ' ~ term.term_id ~ ' · ทุกการแก้ไขถูกตรวจโดย trigger: ห้องซ้ำ (ยกเว้นกลุ่มของวิชาเดียวกันเรียนรวม), อาจารย์สอนสองที่, นักศึกษาที่ลงแล้วเรียน/สอบชน, ห้องสอบจุไม่พอ, กลุ่มที่ล็อกแล้ว และต้องล็อกวิชาส่วนกลางก่อน') }}
 {% if not can_edit %}<div class="banner">{{ ui.icon('eye') }}<span>ฝ่ายทะเบียน<strong>ดูได้อย่างเดียว</strong> · การแก้ไขทำโดยผู้จัดตาราง</span></div>{% endif %}
+{% if service_pending %}
+<div class="banner warn" role="status">{{ ui.icon('alert') }}<span><strong>ต้องล็อกวิชาส่วนกลางให้ครบก่อน</strong> จึงเพิ่มหรือย้ายคาบของวิชาอื่นได้ ·
+  ยังไม่ล็อก: {% for p in service_pending %}<a href="{{ url_for('scheduler.home', open=p.section_id, _anchor='sec' ~ p.section_id) }}"><span class="code">{{ p.course_code }}</span> กลุ่ม {{ p.section_no }}</a>{{ ', ' if not loop.last }}{% endfor %}</span></div>
+{% endif %}
+
+{# ---------- ความคืบหน้าการจัดตาราง (R11) #}
+<section class="card" style="margin-bottom: var(--s4)" aria-labelledby="r11-title">
+  {{ ui.card_head('ความคืบหน้าการจัดตาราง', ('R11',), 'เรียงตามลำดับการจัด: วิชาส่วนกลางก่อน แล้วจึงวิชาบังคับสาขาและวิชาเลือก · ชั่วโมงตามหน่วยกิต = ทฤษฎี + ปฏิบัติ', 'chart', 'r11-title') }}
+  <div class="card-pad">
+    <div class="form-row" style="gap: var(--s5)">
+      <div class="field"><span class="label">{{ ui.icon('lock', 'i-sm') }}ล็อกแล้ว</span>{{ ui.meter(n_locked, progress|length, 'กลุ่ม', kind='') }}</div>
+      <div class="field"><span class="label">{{ ui.icon('clock', 'i-sm') }}วางคาบครบตามหน่วยกิต</span>{{ ui.meter(n_complete, progress|length, 'กลุ่ม', kind='') }}</div>
+    </div>
+    <details class="disclosure" style="margin-top: var(--s3)">
+      <summary><span class="title">{{ ui.icon('list', 'i-sm') }} รายละเอียดทีละกลุ่มเรียน</span>{{ ui.icon('chevron', 'chev') }}</summary>
+      <div class="body">
+        <div class="table-scroll"><table class="stack">
+          <thead><tr><th scope="col" class="num">ลำดับ</th><th scope="col">หมวด</th><th scope="col">วิชา</th><th scope="col">ชั่วโมงที่วาง</th><th scope="col">สถานะ</th><th scope="col">ล็อก</th></tr></thead>
+          <tbody>
+          {% for p in progress %}
+          <tr>
+            <td class="num" data-label="ลำดับ">{{ p.priority }}</td>
+            <td data-label="หมวด">{{ CATEGORY.get(p.course_category, p.course_category) }}</td>
+            <td class="primary-cell"><a href="{{ url_for('scheduler.home', open=p.section_id, _anchor='sec' ~ p.section_id) }}"><span class="code">{{ p.course_code }}</span> {{ p.name_th }} · กลุ่ม {{ p.section_no }}</a></td>
+            <td class="nowrap" data-label="ชั่วโมงที่วาง">{{ '%g'|format(p.hours_placed) }} / {{ p.hours_required if p.hours_required is not none else '?' }} ชม.</td>
+            <td data-label="สถานะ">{{ ui.tag('ok' if p.progress == 'ครบ' else 'warn', p.progress) }}</td>
+            <td data-label="ล็อก">{% if p.is_locked %}{{ ui.tag('info', 'ล็อกแล้ว', 'lock') }}{% else %}<span class="muted">ยังไม่ล็อก</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+      </div>
+    </details>
+  </div>
+</section>
 
 {% if exam_same_day %}
 <details class="disclosure" style="margin-bottom: var(--s4)">
@@ -51,19 +89,23 @@
   <div class="toolbar">
     {{ ui.filter_search('ค้นหารหัสหรือชื่อวิชา', 'ค้นหากลุ่มเรียน', 'q-sec') }}
     {{ ui.filter_chips([('all', 'ทั้งหมด', sections|length), ('noteacher', 'ยังไม่มีอาจารย์', n_noteacher),
-                        ('nomeet', 'ยังไม่มีเวลาเรียน', n_nomeet), ('noexam', 'ยังไม่มีวันสอบ', n_noexam)], 'กรองกลุ่มเรียน') }}
+                        ('nomeet', 'ยังไม่มีเวลาเรียน', n_nomeet), ('noexam', 'ยังไม่มีวันสอบ', n_noexam),
+                        ('locked', 'ล็อกแล้ว', n_locked)], 'กรองกลุ่มเรียน') }}
     <span class="sr-only" data-filter-status aria-live="polite"></span>
   </div>
 
   <div class="sec-list">
   {% for s in sections %}
   {% set ms = meetings[s.section_id] %}{% set xs = exams[s.section_id] %}{% set ts = teachers[s.section_id] %}
-  {% set tags = ['noteacher' if not ts, 'nomeet' if not ms, 'noexam' if not xs]|select|join(' ') %}
+  {% set tags = ['noteacher' if not ts, 'nomeet' if not ms, 'noexam' if not xs, 'locked' if s.is_locked]|select|join(' ') %}
+  {% set editable = can_edit and not s.is_locked %}
   <details class="disclosure sec" id="sec{{ s.section_id }}" {{ 'open' if open_id == s.section_id }}
            data-filter-item data-tags="{{ tags }}" data-text="{{ s.course_code }} {{ s.name_th }}">
     <summary>
       <span class="title"><span class="code">{{ s.course_code }}</span> {{ s.name_th }} · กลุ่ม {{ s.section_no }}</span>
       <span class="meta">
+        <span class="nowrap muted">ลำดับ {{ s.priority }} · {{ CATEGORY.get(s.course_category, s.course_category) }}</span>
+        {% if s.is_locked %}{{ ui.tag('info', 'ล็อกแล้ว', 'lock') }}{% endif %}
         {{ ui.meter(s.enrolled, s.capacity, 'คน') }}
         <span class="nowrap">{{ ui.icon('clock', 'i-sm') }}</span>
         {% for m in ms %}<span class="nowrap">{{ DAYS[m.day_of_week] }} {{ m.start_time }}–{{ m.end_time }}{% if m.room_code %} · {{ m.room_code }}{% endif %}</span>{% else %}{{ ui.tag('warn', 'ยังไม่มีเวลาเรียน', 'alert') }}{% endfor %}
@@ -73,6 +115,26 @@
       {{ ui.icon('chevron', 'chev') }}
     </summary>
     <div class="body">
+      {# ---------- ล็อกตาราง (trigger ตรวจว่ามีคาบแล้ว และกันการแก้คาบของกลุ่มที่ล็อก) #}
+      <div class="block">
+        <h3>{{ ui.icon('lock') }}ล็อกตาราง</h3>
+        {% if s.is_locked %}
+          <p class="mb0">ล็อกแล้ว{% if s.locked_by %} โดย {{ s.locked_by }}{% endif %}{% if s.locked_at %} เมื่อ {{ s.locked_at|thdatetime }}{% endif %}{% if s.lock_reason %} · {{ s.lock_reason }}{% endif %}
+            · เวลาเรียนของกลุ่มนี้แก้ไม่ได้จนกว่าจะปลดล็อก</p>
+          {% if can_edit %}<div class="row" style="margin-top: var(--s3)">{{ ui.action_form(url_for('scheduler.section_unlock', section_id=s.section_id), 'ปลดล็อก', 'btn', 'lock', aria='ปลดล็อก ' ~ s.course_code ~ ' กลุ่ม ' ~ s.section_no) }}</div>{% endif %}
+        {% else %}
+          <p class="muted mb0">ยังไม่ล็อก{% if not ms %} · ต้องวางเวลาเรียนอย่างน้อย 1 คาบก่อนจึงล็อกได้{% endif %}</p>
+          {% if can_edit and ms %}
+          <form method="post" class="form-row" style="margin-top: var(--s3)" action="{{ url_for('scheduler.section_lock', section_id=s.section_id) }}">
+            {{ csrf_field() }}
+            <div class="field"><label for="lr{{ s.section_id }}">เหตุผล (ไม่บังคับ)</label>
+              <input id="lr{{ s.section_id }}" type="text" name="lock_reason" maxlength="200"></div>
+            <button class="btn">{{ ui.icon('lock', 'i-sm') }}ล็อกตาราง</button>
+          </form>
+          {% endif %}
+        {% endif %}
+      </div>
+
       {# ---------- อาจารย์ #}
       <div class="block">
         <h3>{{ ui.icon('user') }}อาจารย์ผู้สอน</h3>
@@ -96,7 +158,7 @@
       <div class="block">
         <h3>{{ ui.icon('clock') }}เวลาเรียน</h3>
         {% for m in ms %}
-          {% if can_edit %}
+          {% if editable %}
           <div class="slot-row">
             <form method="post" class="form-row" action="{{ url_for('scheduler.meeting_edit', meeting_id=m.meeting_id) }}">
               {{ csrf_field() }}
@@ -112,7 +174,8 @@
           <p class="mb0">{{ DAYS[m.day_of_week] }} {{ m.start_time }}–{{ m.end_time }} · ห้อง {{ m.room_code or '–' }}</p>
           {% endif %}
         {% else %}<p class="muted">ยังไม่มีเวลาเรียน</p>{% endfor %}
-        {% if can_edit %}
+        {% if can_edit and s.is_locked %}<p class="muted mb0">{{ ui.icon('lock', 'i-sm') }} ล็อกตารางแล้ว ต้องปลดล็อกก่อนจึงเพิ่มหรือแก้เวลาเรียนได้</p>{% endif %}
+        {% if editable %}
         <form method="post" class="form-row slot-row" action="{{ url_for('scheduler.meeting_add', section_id=s.section_id) }}">
           {{ csrf_field() }}
           <div class="field"><label for="nd{{ s.section_id }}">วัน</label>{{ day_select('nd' ~ s.section_id) }}</div>
